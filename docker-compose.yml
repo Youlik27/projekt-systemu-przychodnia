@@ -1,0 +1,22 @@
+services:
+  db:
+    image: mysql:8.4
+    container_name: przychodnia-db
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: przychodnia
+      TZ: Europe/Warsaw
+    ports:
+      - "3307:3306" 
+    volumes:
+      - db_data:/var/lib/mysql
+      - ./db:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-proot"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+volumes:
+  db_data:
