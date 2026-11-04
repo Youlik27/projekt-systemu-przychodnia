@@ -39,7 +39,9 @@ CREATE TABLE Terms (
   PRIMARY KEY (TermID),
   UNIQUE KEY uq_terms_term_doctor (TermID, DoctorID),        
   UNIQUE KEY uq_terms_doctor_start (DoctorID, StartDate),     
-  KEY idx_terms_status_start (Status, StartDate),             
+  KEY idx_terms_status_start (Status, StartDate),  
+  CONSTRAINT chk_terms_dates
+  CHECK (EndDate > StartDate),           
   CONSTRAINT fk_terms_doctor FOREIGN KEY (DoctorID) REFERENCES Doctor (ID)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_unicode_ci;
 
