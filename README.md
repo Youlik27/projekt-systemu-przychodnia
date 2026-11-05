@@ -1,5 +1,81 @@
 # Projekt systemu przychodni
-
+projekt-systemu-przychodnia/
+│
+├── backend/
+│   ├── src/
+│   │   ├── controllers/
+│   │   │   ├── auth.controller.ts
+│   │   │   ├── doctor.controller.ts
+│   │   │   ├── phoneVerification.controller.ts
+│   │   │   ├── reservation.controller.ts
+│   │   │   └── term.controller.ts
+│   │   │
+│   │   ├── middleware/
+│   │   │   ├── auth.middleware.ts
+│   │   │   └── rateLimit.middleware.ts
+│   │   │
+│   │   ├── routes/
+│   │   │   ├── auth.routes.ts
+│   │   │   ├── doctor.routes.ts
+│   │   │   ├── phoneVerification.routes.ts
+│   │   │   ├── reservation.routes.ts
+│   │   │   └── term.routes.ts
+│   │   │
+│   │   ├── services/
+│   │   │   ├── auth.service.ts
+│   │   │   ├── phoneVerification.service.ts
+│   │   │   ├── reservation.service.ts
+│   │   │   └── sms.service.ts
+│   │   │
+│   │   ├── types/
+│   │   │   └── express.d.ts
+│   │   │
+│   │   ├── db.ts
+│   │   ├── index.ts
+│   │   └── models.ts
+│   │
+│   ├── .env.example
+│   ├── package.json
+│   ├── package-lock.json
+│   └── tsconfig.json
+│
+├── frontend/
+│   ├── public/
+│   │
+│   ├── src/
+│   │   ├── components/
+│   │   │   ├── AccessibilityBar.tsx
+│   │   │   └── Stepper.tsx
+│   │   │
+│   │   ├── screens/
+│   │   │   ├── StepConfirm.tsx
+│   │   │   ├── StepPatient.tsx
+│   │   │   ├── StepSpecialization.tsx
+│   │   │   └── StepTerm.tsx
+│   │   │
+│   │   ├── App.tsx
+│   │   ├── api.ts
+│   │   ├── index.css
+│   │   └── main.tsx
+│   │
+│   ├── index.html
+│   ├── package.json
+│   ├── package-lock.json
+│   ├── vite.config.ts
+│   ├── tsconfig.json
+│   ├── tsconfig.app.json
+│   └── tsconfig.node.json
+│
+├── db/
+│   ├── 01_schema.sql
+│   ├── 02_seed.sql
+│   ├── 03_phone_verification.sql
+│   ├── 04_phone_verification_status.sql
+│   └── 05_phone_verification_purpose.sql
+│
+├── docker-compose.yml
+├── .gitignore
+└── README.md
 ## Nazwa projektu
 
 **System wspomagający rezerwację terminów do lekarza dla nowo otwartej przychodni**
