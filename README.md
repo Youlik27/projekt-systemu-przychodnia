@@ -1,62 +1,70 @@
 # Projekt systemu przychodni
+
+## Nazwa projektu
+
+**System wspomagający rezerwację terminów do lekarza dla nowo otwartej przychodni**
+
+## Struktura projektu
+
+```text
 projekt-systemu-przychodnia/
 │
 ├── backend/
 │   ├── src/
-│   │   ├── controllers/
+│   │   ├── controllers/          # Obsługa żądań HTTP
 │   │   │   ├── auth.controller.ts
 │   │   │   ├── doctor.controller.ts
 │   │   │   ├── phoneVerification.controller.ts
 │   │   │   ├── reservation.controller.ts
 │   │   │   └── term.controller.ts
 │   │   │
-│   │   ├── middleware/
+│   │   ├── middleware/           # Autoryzacja i ograniczanie żądań
 │   │   │   ├── auth.middleware.ts
 │   │   │   └── rateLimit.middleware.ts
 │   │   │
-│   │   ├── routes/
+│   │   ├── routes/               # Endpointy API
 │   │   │   ├── auth.routes.ts
 │   │   │   ├── doctor.routes.ts
 │   │   │   ├── phoneVerification.routes.ts
 │   │   │   ├── reservation.routes.ts
 │   │   │   └── term.routes.ts
 │   │   │
-│   │   ├── services/
+│   │   ├── services/             # Logika biznesowa
 │   │   │   ├── auth.service.ts
 │   │   │   ├── phoneVerification.service.ts
 │   │   │   ├── reservation.service.ts
 │   │   │   └── sms.service.ts
 │   │   │
-│   │   ├── types/
+│   │   ├── types/                # Dodatkowe typy TypeScript
 │   │   │   └── express.d.ts
 │   │   │
-│   │   ├── db.ts
-│   │   ├── index.ts
-│   │   └── models.ts
+│   │   ├── db.ts                 # Połączenie z bazą danych
+│   │   ├── index.ts              # Główny plik backendu
+│   │   └── models.ts             # Modele danych
 │   │
-│   ├── .env.example
+│   ├── .env.example              # Przykładowa konfiguracja
 │   ├── package.json
 │   ├── package-lock.json
 │   └── tsconfig.json
 │
 ├── frontend/
-│   ├── public/
+│   ├── public/                   # Pliki statyczne
 │   │
 │   ├── src/
-│   │   ├── components/
+│   │   ├── components/           # Komponenty interfejsu
 │   │   │   ├── AccessibilityBar.tsx
 │   │   │   └── Stepper.tsx
 │   │   │
-│   │   ├── screens/
+│   │   ├── screens/              # Etapy rezerwacji wizyty
 │   │   │   ├── StepConfirm.tsx
 │   │   │   ├── StepPatient.tsx
 │   │   │   ├── StepSpecialization.tsx
 │   │   │   └── StepTerm.tsx
 │   │   │
-│   │   ├── App.tsx
-│   │   ├── api.ts
-│   │   ├── index.css
-│   │   └── main.tsx
+│   │   ├── App.tsx               # Główny komponent aplikacji
+│   │   ├── api.ts                # Komunikacja z backendem
+│   │   ├── index.css              # Style aplikacji
+│   │   └── main.tsx               # Punkt wejścia frontendu
 │   │
 │   ├── index.html
 │   ├── package.json
@@ -66,19 +74,17 @@ projekt-systemu-przychodnia/
 │   ├── tsconfig.app.json
 │   └── tsconfig.node.json
 │
-├── db/
-│   ├── 01_schema.sql
-│   ├── 02_seed.sql
-│   ├── 03_phone_verification.sql
+├── db/                            # Skrypty SQL
+│   ├── 01_schema.sql              # Struktura bazy danych
+│   ├── 02_seed.sql                # Dane testowe
+│   ├── 03_phone_verification.sql  # Tabela weryfikacji telefonu
 │   ├── 04_phone_verification_status.sql
 │   └── 05_phone_verification_purpose.sql
 │
-├── docker-compose.yml
+├── docker-compose.yml              # Konfiguracja Docker
 ├── .gitignore
 └── README.md
-## Nazwa projektu
-
-**System wspomagający rezerwację terminów do lekarza dla nowo otwartej przychodni**
+```
 
 ## Opis projektu
 
