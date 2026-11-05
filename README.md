@@ -1,53 +1,168 @@
-# projekt-systemu-przychodnia
+# Projekt systemu przychodni
 
-System rezerwacji wizyt dla przychodni.
+## Nazwa projektu
 
-## Stack
-- **Frontend:** TypeScript + React (Vite) + Chart.js
-- **Backend:** TypeScript + Node.js (Express) 
-- **DB:** MySQL 8.4 (Docker), w backendzie `mysql2`
-- **Środowisko:** GitHub, Docker
+**System wspomagający rezerwację terminów do lekarza dla nowo otwartej przychodni**
+
+## Opis projektu
+
+Projekt zakłada stworzenie aplikacji internetowej umożliwiającej pacjentom samodzielne wyszukiwanie i rezerwowanie terminów wizyt lekarskich.
+
+System jest przeznaczony dla pacjentów oraz pracowników przychodni. Pacjenci będą mogli przeglądać dostępnych lekarzy, wybierać specjalizacje i wolne terminy oraz dokonywać rezerwacji. Pracownicy przychodni będą mogli przeglądać rezerwacje i zarządzać harmonogramem wizyt.
+
+Szczególny nacisk położono na prostotę obsługi oraz dostępność interfejsu dla osób starszych i osób z dysfunkcjami wzroku.
+
+## Technologie
+
+- **Frontend:** TypeScript, React, Vite, Chart.js
+- **Backend:** TypeScript, Node.js, Express
+- **Baza danych:** MySQL 8.4
+- **Sterownik bazy danych:** mysql2
+- **Konteneryzacja:** Docker, Docker Compose
+- **Narzędzia:** Git, GitHub, npm
+
+## Wymagania
+
+Do uruchomienia projektu wymagane są:
+
+- Node.js (wersja LTS)
+- npm
+- Docker Desktop
+- Git
+
+## Instalacja
+
+### 1. Pobranie projektu
+
+Sklonuj repozytorium:
+
+```bash
+git clone https://github.com/Youlik27/projekt-systemu-przychodnia.git
+```
+
+Przejdź do katalogu projektu:
+
+```bash
+cd projekt-systemu-przychodnia
+```
+
+### 2. Instalacja i konfiguracja bazy danych
+
+Uruchom Docker Desktop, a następnie wykonaj:
+
+```bash
+docker compose up -d
+```
+
+Baza danych MySQL zostanie uruchomiona na porcie `3307`. Nazwa bazy danych: `przychodnia`.
+
+Przy pierwszym uruchomieniu Docker automatycznie wykona skrypty SQL znajdujące się w katalogu `db/`:
+
+- [`db/01_schema.sql`](https://github.com/Youlik27/projekt-systemu-przychodnia/blob/main/db/01_schema.sql) – tworzy strukturę tabel: `User`, `Doctor`, `Terms`, `Reservation`.
+- [`db/02_seed.sql`](https://github.com/Youlik27/projekt-systemu-przychodnia/blob/main/db/02_seed.sql) – wprowadza przykładowe dane testowe.
+
+### 3. Instalacja frontendu
+
+Przejdź do katalogu frontend:
+
+```bash
+cd frontend
+```
+
+Zainstaluj zależności:
+
+```bash
+npm install
+```
+
+### 4. Instalacja backendu
+
+Przejdź do katalogu backend:
+
+```bash
+cd ../backend
+```
+
+Zainstaluj zależności:
+
+```bash
+npm install
+```
+
+Utwórz plik `.env` na podstawie pliku przykładowego:
+
+```bash
+cp .env.example .env
+```
+
+W razie potrzeby uzupełnij dane konfiguracyjne w pliku `.env`.
 
 ## Uruchomienie
 
-### Baza danych
-Wymagany [Docker Desktop](https://www.docker.com/products/docker-desktop/).
+### 1. Uruchomienie bazy danych
+
+W głównym katalogu projektu wykonaj:
 
 ```bash
-docker compose up -d          # MySQL na localhost:3307, baza "przychodnia"
+docker compose up -d
 ```
 
-Przy pierwszym uruchomieniu Docker sam wykonuje pliki z folderu `db/`:
-- [`db/01_schema.sql`](db/01_schema.sql) – tworzy tabele `User`, `Doctor`, `Terms`, `Reservation`,
-- [`db/02_seed.sql`](db/02_seed.sql) – wgrywa dane testowe.
+### 2. Uruchomienie backendu
 
-Modele TypeScript odpowiadające tabelom: [`backend/src/models.ts`](backend/src/models.ts),
-połączenie z bazą: [`backend/src/db.ts`](backend/src/db.ts).
-
-**Zmiana tabel:** pliki z `db/` wykonują się tylko na pustej bazie. Po zmianie SQL (i `models.ts`) trzeba bazę odtworzyć:
+W terminalu:
 
 ```bash
-docker compose down -v        # usuwa bazę razem z danymi
-docker compose up -d          # tworzy ją od nowa z plików db/
+cd backend
+npm run dev
 ```
 
-Podgląd bazy z konsoli:
+Backend będzie dostępny pod adresem:
+
+[http://localhost:3000](http://localhost:3000)
+
+Endpoint kontrolny API:
+
+[http://localhost:3000/api/health](http://localhost:3000/api/health)
+
+### 3. Uruchomienie frontendu
+
+W drugim terminalu:
+
+```bash
+cd frontend
+npm run dev
+```
+
+Frontend będzie dostępny pod adresem:
+
+[http://localhost:5173](http://localhost:5173)
+
+## Dodatkowe informacje
+
+### Podgląd bazy danych
+
+Aby połączyć się z bazą danych z poziomu konsoli:
 
 ```bash
 docker exec -it przychodnia-db mysql -uroot -proot przychodnia
 ```
 
-### Frontend
+### Odtworzenie bazy danych
+
+Pliki SQL z katalogu `db/` są wykonywane automatycznie tylko przy pierwszym uruchomieniu, gdy baza danych jest pusta.
+
+W przypadku zmian w strukturze bazy danych można ją odtworzyć za pomocą:
+
 ```bash
-cd frontend
-npm install
-npm run dev        # http://localhost:5173
+docker compose down -v
+docker compose up -d
 ```
 
-### Backend
-```bash
-cd backend
-npm install
-cp .env.example .env
-npm run dev        # http://localhost:3000/api/health
-```
+**Uwaga:** polecenie `docker compose down -v` usuwa bazę danych wraz z zapisanymi danymi.
+
+## Autorzy
+
+- Yelisiei Palamarchuk – moduł raportowania, testy, analiza wyników
+- Vladyslav Mihulov – baza danych, model danych, integracja
+- Maksym Nidzelskyi – backend, API, autoryzacja
+- Maksym Litosh – frontend, UI/UX
