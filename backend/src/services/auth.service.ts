@@ -1,7 +1,9 @@
 import jwt from "jsonwebtoken";
+import type { ResultSetHeader } from "mysql2/promise";
 import type { UserRole } from "../models.js";
 import { pool, type Rows } from "../db.js";
-import type { ResultSetHeader } from "mysql2/promise";
+import { config } from "../config.js";
+import { AppError, isDuplicateEntryError } from "../utils/errors.js";
 
 interface JwtPayload {
   id: number;
@@ -9,28 +11,15 @@ interface JwtPayload {
 }
 
 export function generateToken(user: { id: number; role: UserRole }) {
-  const secret = process.env.JWT_SECRET;
-  const expiresIn = process.env.JWT_EXPIRES_IN || "1h";
-
-  if (!secret) {
-    throw new Error("JWT_SECRET is not configured");
-  }
-
   return jwt.sign(
     { id: user.id, role: user.role },
-    secret,
-    { expiresIn: expiresIn as jwt.SignOptions["expiresIn"] }
+    config.jwtSecret,
+    { expiresIn: config.jwtExpiresIn as jwt.SignOptions["expiresIn"] }
   );
 }
 
 export const verifyToken = (token: string): JwtPayload => {
-  const secret = process.env.JWT_SECRET;
-
-  if (!secret) {
-    throw new Error("JWT_SECRET is not configured.");
-  }
-
-  const decoded = jwt.verify(token, secret);
+  const decoded = jwt.verify(token, config.jwtSecret);
 
   if (
     typeof decoded === "string" ||
@@ -44,24 +33,18 @@ export const verifyToken = (token: string): JwtPayload => {
     id: decoded.id,
     role: decoded.role
   };
-  
 };
-export class AuthError extends Error {
-  constructor(
-    message: string,
-    public statusCode: number
-  ) {
-    super(message);
-    this.name = "AuthError";
-  }
-}
 
-interface RegisterPatientData {
+// Zachowane dla zgodności z istniejącym kodem – AuthError to po prostu AppError.
+export { AppError as AuthError };
+
+export interface RegisterPatientData {
   firstName: string;
   lastName: string;
-  address: string;
-  birthDate: string;
   phoneNumber: string;
+  // Dokumentacja (4.4 krok 5, 4.6 ekran 3) wymaga tylko imienia, nazwiska i telefonu.
+  address: string | null;
+  birthDate: string | null;
 }
 
 export const registerPatient = async (
@@ -72,50 +55,37 @@ export const registerPatient = async (
   try {
     await connection.beginTransaction();
 
-    // Перевіряємо, чи номер телефону був підтверджений
+    // Numer telefonu musi być wcześniej potwierdzony kodem SMS
+    // i potwierdzenie nie może być starsze niż registerWindowMinutes.
     const [verifications] = await connection.execute<
-      Rows<{ VerifiedAt: Date | null }>
+      Rows<{ VerifiedAt: Date | null; IsFresh: number | null }>
     >(
-      `SELECT VerifiedAt
+      `SELECT
+         VerifiedAt,
+         (VerifiedAt >= DATE_SUB(NOW(), INTERVAL ? MINUTE)) AS IsFresh
        FROM PhoneVerification
        WHERE PhoneNumber = ?
-        AND Purpose = 'register'
+         AND Purpose = 'register'
        FOR UPDATE`,
-      [data.phoneNumber]
+      [config.registerWindowMinutes, data.phoneNumber]
     );
 
     if (
       verifications.length === 0 ||
       verifications[0].VerifiedAt === null
     ) {
-      throw new AuthError(
-        "Numer telefonu nie został zweryfikowany.",
+      throw new AppError("Numer telefonu nie został zweryfikowany.", 403);
+    }
+
+    if (verifications[0].IsFresh !== 1) {
+      throw new AppError(
+        "Potwierdzenie numeru telefonu wygasło. Wyślij nowy kod SMS.",
         403
       );
     }
 
-    // Підтвердження має бути не старшим за 15 хвилин
-    const [validations] = await connection.execute<
-      Rows<{ IsValid: number }>
-    >(
-      `SELECT (VerifiedAt >= DATE_SUB(NOW(), INTERVAL 15 MINUTE)) AS IsValid
-       FROM PhoneVerification
-       WHERE PhoneNumber = ?
-            AND Purpose = 'register'`,
-      [data.phoneNumber]
-    );
-
-    if (validations.length === 0 || validations[0].IsValid !== 1) {
-      throw new AuthError(
-        "Potwierdzenie numeru telefonu wygasło.",
-        403
-      );
-    }
-
-    // Перевіряємо, чи користувач уже існує
-    const [existingUsers] = await connection.execute<
-      Rows<{ ID: number }>
-    >(
+    // WF-04: nie tworzymy drugiego konta dla tego samego numeru
+    const [existingUsers] = await connection.execute<Rows<{ ID: number }>>(
       `SELECT ID
        FROM \`User\`
        WHERE PhoneNumber = ?`,
@@ -123,16 +93,15 @@ export const registerPatient = async (
     );
 
     if (existingUsers.length > 0) {
-      throw new AuthError(
+      throw new AppError(
         "Użytkownik z tym numerem telefonu już istnieje.",
         409
       );
     }
 
-    // Створюємо пацієнта
     const [result] = await connection.execute<ResultSetHeader>(
       `INSERT INTO \`User\`
-       (FirstName, LastName, Address, BirthDate, PhoneNumber, Role)
+         (FirstName, LastName, Address, BirthDate, PhoneNumber, Role)
        VALUES (?, ?, ?, ?, ?, 'patient')`,
       [
         data.firstName,
@@ -143,11 +112,11 @@ export const registerPatient = async (
       ]
     );
 
-    // Споживаємо підтвердження, щоб його не можна було використати повторно
+    // Zużywamy potwierdzenie, żeby nie dało się go użyć ponownie
     await connection.execute(
       `DELETE FROM PhoneVerification
        WHERE PhoneNumber = ?
-             AND Purpose = 'register'`,
+         AND Purpose = 'register'`,
       [data.phoneNumber]
     );
 
@@ -157,6 +126,15 @@ export const registerPatient = async (
 
   } catch (error) {
     await connection.rollback();
+
+    // Dwie równoczesne rejestracje tego samego numeru – UNIQUE w bazie
+    if (isDuplicateEntryError(error)) {
+      throw new AppError(
+        "Użytkownik z tym numerem telefonu już istnieje.",
+        409
+      );
+    }
+
     throw error;
 
   } finally {

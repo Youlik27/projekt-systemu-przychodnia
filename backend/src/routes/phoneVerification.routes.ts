@@ -6,24 +6,25 @@ import {
 } from "../controllers/phoneVerification.controller.js";
 
 import {
-  otpIpLimiter,
-  otpPhoneLimiter
+  otpSendIpLimiter,
+  otpPhoneLimiter,
+  otpVerifyIpLimiter
 } from "../middleware/rateLimit.middleware.js";
 
 const router = Router();
 
-// Надсилання SMS із двома обмеженнями
+// Wysyłanie kodu SMS – limit za IP oraz za numerem telefonu
 router.post(
   "/phone-verification/send",
-  otpIpLimiter,
+  otpSendIpLimiter,
   otpPhoneLimiter,
   postSendVerificationCode
 );
 
-// Перевірка SMS-коду
+// Weryfikacja kodu SMS – osobny limit za IP
 router.post(
   "/phone-verification/verify",
-  otpIpLimiter,
+  otpVerifyIpLimiter,
   postVerifyPhoneCode
 );
 

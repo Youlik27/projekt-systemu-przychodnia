@@ -1,3 +1,5 @@
+import { config } from "../config.js";
+
 interface SendSmsParams {
   phoneNumber: string;
   message: string;
@@ -7,7 +9,7 @@ export const sendSms = async ({
   phoneNumber,
   message
 }: SendSmsParams): Promise<void> => {
-  const provider = process.env.SMS_PROVIDER || "console";
+  const provider = config.smsProvider;
 
   if (provider === "console") {
     console.log("========== SMS (DEVELOPMENT MODE) ==========");
