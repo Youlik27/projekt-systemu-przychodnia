@@ -130,16 +130,16 @@ async function request<T>(path: string, init: RequestInit & { token?: string } =
 
   const data = await res.json().catch(() => null);
 
-  if (!res.ok) {
-    // Nasz backend ZAWSZE odpowiada JSON-em z polem "message".
-    // Odpowiedź bez takiego JSON-a nie pochodzi z backendu, tylko np. z proxy Vite (5xx,
-    // gdy backend nie działa) albo z serwera plików, np. GitHub Pages (404 jako strona HTML).
-    // W obu przypadkach backendu nie ma, więc przechodzimy w tryb demonstracyjny.
-    const fromBackend = data !== null && typeof data.message === 'string';
-    if (!fromBackend) {
-      throw new ApiError(res.status, 'Brak połączenia z serwerem.', {}, true);
-    }
+  // Nasz backend ZAWSZE odpowiada JSON-em (przy błędzie – z polem "message").
+  // Odpowiedź bez takiego JSON-a nie pochodzi z backendu, tylko np. z proxy Vite (5xx,
+  // gdy backend nie działa) albo z serwera plików, np. GitHub Pages (strona HTML z 404
+  // lub 200). Wtedy backendu nie ma, więc przechodzimy w tryb demonstracyjny.
+  const fromBackend = data !== null && (res.ok || typeof data.message === 'string');
+  if (!fromBackend) {
+    throw new ApiError(res.status, 'Brak połączenia z serwerem.', {}, true);
+  }
 
+  if (!res.ok) {
     // 401 przy zapytaniu z tokenem = token wygasł lub jest nieprawidłowy → wylogowujemy
     if (res.status === 401 && token) clearSession();
 
