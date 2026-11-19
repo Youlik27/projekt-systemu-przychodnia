@@ -3,8 +3,11 @@ import { useEffect, useState } from 'react';
 // Moduł dostępności (dokumentacja 4.2): wysoki kontrast + powiększenie tekstu do 200%.
 // Ustawienia są zapamiętywane w przeglądarce, żeby pacjent nie musiał ich włączać za każdym razem.
 
+// Kolejne poziomy powiększenia tekstu w procentach (WNF-01: do 200%).
+// Cały CSS używa jednostek rem, więc zmiana font-size na <html> skaluje cały układ.
 const SCALES = [100, 125, 150, 175, 200];
 
+/** Bezpieczny odczyt z localStorage (w trybie prywatnym może rzucić wyjątek). */
 function load<T>(key: string, fallback: T): T {
   try {
     const v = localStorage.getItem(key);
@@ -25,11 +28,13 @@ export default function AccessibilityBar() {
   const [contrast, setContrast] = useState<boolean>(() => load('a11y-contrast', false));
   const [scale, setScale] = useState<number>(() => load('a11y-scale', 100));
 
+  // Atrybut data-contrast="high" na <html> przełącza zmienne kolorów w index.css
   useEffect(() => {
     document.documentElement.dataset.contrast = contrast ? 'high' : 'normal';
     save('a11y-contrast', contrast);
   }, [contrast]);
 
+  // Powiększenie tekstu – zmiana bazowego rozmiaru czcionki dokumentu
   useEffect(() => {
     document.documentElement.style.fontSize = `${scale}%`;
     save('a11y-scale', scale);
