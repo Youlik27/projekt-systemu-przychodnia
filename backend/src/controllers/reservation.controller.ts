@@ -1,14 +1,22 @@
+// =====================================================================
+// Endpointy rezerwacji dla PACJENTA (wymagają tokenu z rolą "patient").
+// Pacjent ma dostęp wyłącznie do własnych wizyt – cudza wizyta zwraca 404.
+// =====================================================================
+
 import type { Request, Response } from "express";
 import {
   cancelReservation,
   createReservation,
   getPatientReservation,
-  getPatientReservations
+  getPatientReservations,
+  rescheduleReservation,
+  type Actor
 } from "../services/reservation.service.js";
 import { isPositiveInt, isPositiveIntString } from "../utils/validation.js";
 import { sendUnexpectedError } from "../utils/errors.js";
 
-const requireUserId = (req: Request, res: Response): number | null => {
+/** Zalogowany pacjent jako „aktor” operacji; null = odpowiedź 401 już wysłana. */
+export const requirePatientActor = (req: Request, res: Response): Actor | null => {
   if (!req.user) {
     res.status(401).json({
       success: false,
@@ -17,10 +25,11 @@ const requireUserId = (req: Request, res: Response): number | null => {
     return null;
   }
 
-  return req.user.id;
+  return { role: "patient", userId: req.user.id };
 };
 
-const parseReservationId = (req: Request, res: Response): number | null => {
+/** ID rezerwacji z adresu (/reservations/:id); null = odpowiedź 400 już wysłana. */
+export const parseReservationId = (req: Request, res: Response): number | null => {
   const { id } = req.params;
 
   if (!isPositiveIntString(id)) {
@@ -34,27 +43,35 @@ const parseReservationId = (req: Request, res: Response): number | null => {
   return Number(id);
 };
 
+/** termId z treści żądania; null = odpowiedź 400 już wysłana. */
+export const parseTermId = (req: Request, res: Response): number | null => {
+  const { termId } = req.body ?? {};
+
+  if (!isPositiveInt(termId)) {
+    res.status(400).json({
+      success: false,
+      message: "Nieprawidłowy identyfikator terminu.",
+      errors: { termId: "Wybierz termin z listy dostępnych terminów." }
+    });
+    return null;
+  }
+
+  return termId;
+};
+
 // POST /api/reservations – WF-03, odpowiedź zawiera dane do potwierdzenia (WF-09)
 export const postReservation = async (
   req: Request,
   res: Response
 ): Promise<void> => {
   try {
-    const userId = requireUserId(req, res);
-    if (userId === null) return;
+    const actor = requirePatientActor(req, res);
+    if (!actor) return;
 
-    const { termId } = req.body ?? {};
+    const termId = parseTermId(req, res);
+    if (termId === null) return;
 
-    if (!isPositiveInt(termId)) {
-      res.status(400).json({
-        success: false,
-        message: "Nieprawidłowy identyfikator terminu.",
-        errors: { termId: "Wybierz termin z listy dostępnych terminów." }
-      });
-      return;
-    }
-
-    const reservation = await createReservation(userId, termId);
+    const reservation = await createReservation(actor.userId, termId);
 
     res.status(201).json({
       success: true,
@@ -79,10 +96,10 @@ export const getMyReservations = async (
   res: Response
 ): Promise<void> => {
   try {
-    const userId = requireUserId(req, res);
-    if (userId === null) return;
+    const actor = requirePatientActor(req, res);
+    if (!actor) return;
 
-    const reservations = await getPatientReservations(userId);
+    const reservations = await getPatientReservations(actor.userId);
 
     res.status(200).json({
       success: true,
@@ -105,13 +122,13 @@ export const getReservation = async (
   res: Response
 ): Promise<void> => {
   try {
-    const userId = requireUserId(req, res);
-    if (userId === null) return;
+    const actor = requirePatientActor(req, res);
+    if (!actor) return;
 
     const reservationId = parseReservationId(req, res);
     if (reservationId === null) return;
 
-    const reservation = await getPatientReservation(userId, reservationId);
+    const reservation = await getPatientReservation(actor.userId, reservationId);
 
     res.status(200).json({
       success: true,
@@ -134,13 +151,13 @@ export const patchCancelReservation = async (
   res: Response
 ): Promise<void> => {
   try {
-    const userId = requireUserId(req, res);
-    if (userId === null) return;
+    const actor = requirePatientActor(req, res);
+    if (!actor) return;
 
     const reservationId = parseReservationId(req, res);
     if (reservationId === null) return;
 
-    const reservation = await cancelReservation(userId, reservationId);
+    const reservation = await cancelReservation(actor, reservationId);
 
     res.status(200).json({
       success: true,
@@ -154,6 +171,39 @@ export const patchCancelReservation = async (
       error,
       "Cancel reservation error",
       "Wystąpił błąd podczas anulowania wizyty."
+    );
+  }
+};
+
+// PATCH /api/reservations/:id/reschedule  { termId } – WF-08
+export const patchRescheduleReservation = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
+  try {
+    const actor = requirePatientActor(req, res);
+    if (!actor) return;
+
+    const reservationId = parseReservationId(req, res);
+    if (reservationId === null) return;
+
+    const termId = parseTermId(req, res);
+    if (termId === null) return;
+
+    const reservation = await rescheduleReservation(actor, reservationId, termId);
+
+    res.status(200).json({
+      success: true,
+      message: "Termin wizyty został zmieniony.",
+      reservation
+    });
+
+  } catch (error) {
+    sendUnexpectedError(
+      res,
+      error,
+      "Reschedule reservation error",
+      "Wystąpił błąd podczas zmiany terminu wizyty."
     );
   }
 };

@@ -1,4 +1,4 @@
-// Modele danych – odpowiadają tabelom z db/01_schema.sql.
+// Modele danych – odpowiadają tabelom z db/*.sql.
 // Przy zmianie tabeli w SQL trzeba też zaktualizować odpowiedni interfejs tutaj.
 
 export type UserRole = "patient" | "staff";
@@ -39,4 +39,11 @@ export interface Reservation {
   UserID: number;
   TermsTermID: number;
   TermsDoctorID: number;
+}
+
+/** db/06_reservation_reminder.sql – wysłane przypomnienia SMS (WF-12) */
+export interface ReservationReminder {
+  ReservationID: number;
+  TermID: number;
+  SentAt: Date;
 }

@@ -1,13 +1,30 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import AccessibilityBar from './components/AccessibilityBar';
 import Stepper from './components/Stepper';
 import StepSpecialization from './screens/StepSpecialization';
 import StepTerm from './screens/StepTerm';
-import StepPatient, { type PatientInfo } from './screens/StepPatient';
+import StepPatient from './screens/StepPatient';
 import StepConfirm from './screens/StepConfirm';
-import { CLINIC_ADDRESS, type Term } from './api';
+import MyVisits from './screens/MyVisits';
+import { CLINIC_ADDRESS, DEMO_CODE, isDemoMode, subscribeDemoMode, type Reservation, type Term } from './api';
+import { clearSession, useSession } from './session';
 
-const TITLES = [
+// =====================================================================
+// Główny komponent aplikacji.
+//
+// Aplikacja ma dwie zakładki (bez routera – to wystarcza przy dwóch widokach):
+//   - „Umów wizytę”  – 4-krokowa rezerwacja (WNF-07: maks. 4 kroki),
+//   - „Moje wizyty”  – lista wizyt i anulowanie (WF-06, WF-07).
+//
+// Stan rezerwacji (wybrana specjalizacja, termin, wynik) trzymamy tutaj,
+// bo przechodzi między ekranami. Każdy ekran dostaje tylko to, czego potrzebuje,
+// i informuje App o przejściu dalej przez funkcje onNext / onDone / onBack.
+// =====================================================================
+
+type View = 'booking' | 'visits';
+
+/** Nagłówek h1 dla każdego kroku rezerwacji */
+const BOOKING_TITLES = [
   'Umów wizytę do lekarza',
   'Wybierz dzień i godzinę',
   'Podaj dane i potwierdź kodem SMS',
@@ -15,52 +32,112 @@ const TITLES = [
 ];
 
 export default function App() {
-  const [step, setStep] = useState(0);
+  const [view, setView] = useState<View>('booking');
+
+  // --- stan procesu rezerwacji ---
+  const [step, setStep] = useState(0); // 0..3 – indeks w BOOKING_TITLES
   const [specialization, setSpecialization] = useState('');
   const [term, setTerm] = useState<Term | null>(null);
-  const [patient, setPatient] = useState<PatientInfo | null>(null);
+  const [reservation, setReservation] = useState<Reservation | null>(null);
+  const [firstName, setFirstName] = useState<string | undefined>();
+  /** Komunikat na ekranie terminów, np. „termin został właśnie zarezerwowany” */
   const [notice, setNotice] = useState('');
+
+  const session = useSession();
+  // Tryb demonstracyjny włącza api.ts, gdy backend nie odpowiada – wtedy pokazujemy baner
+  const demo = useSyncExternalStore(subscribeDemoMode, isDemoMode);
+
   const headingRef = useRef<HTMLHeadingElement>(null);
   const firstRender = useRef(true);
+  const title = view === 'visits' ? 'Moje wizyty' : BOOKING_TITLES[step];
 
-  // Po zmianie kroku przenosimy fokus na nagłówek – czytnik ekranu od razu odczyta, gdzie jesteśmy.
+  // Po zmianie kroku lub zakładki przenosimy fokus na nagłówek –
+  // czytnik ekranu od razu odczyta, gdzie jesteśmy (WNF-01, WNF-02).
   useEffect(() => {
-    document.title = `${TITLES[step]} – Przychodnia`;
+    document.title = `${title} – Przychodnia`;
     if (firstRender.current) {
       firstRender.current = false;
       return;
     }
     headingRef.current?.focus();
     window.scrollTo({ top: 0 });
-  }, [step]);
+  }, [title, view, step]);
 
-  const reset = () => {
+  /** Rozpoczęcie rezerwacji od nowa (krok 1) */
+  const resetBooking = () => {
     setStep(0);
     setTerm(null);
-    setPatient(null);
+    setReservation(null);
     setNotice('');
+  };
+
+  const goToBooking = () => {
+    resetBooking();
+    setView('booking');
+  };
+
+  const goToVisits = () => {
+    resetBooking();
+    setView('visits');
   };
 
   return (
     <>
+      {/* Link „przejdź do treści” – widoczny po naciśnięciu Tab, pomija menu */}
       <a href="#main" className="skip-link">Przejdź do treści</a>
       <AccessibilityBar />
 
       <header className="site-header">
         <div className="container site-header__inner">
           <span className="logo" aria-hidden="true">✚</span>
-          <div>
+          <div className="site-header__text">
             <p className="site-header__name">Przychodnia Zdrowie</p>
             <p className="site-header__sub">Rejestracja: (22) 123 45 67 · pn–pt 8:00–18:00</p>
           </div>
         </div>
+
+        {/* Menu główne – aktywna zakładka ma aria-current="page" (i podkreślenie, nie tylko kolor) */}
+        <nav className="container main-nav" aria-label="Menu główne">
+          <ul className="main-nav__list">
+            <li>
+              <button type="button" className="main-nav__btn"
+                aria-current={view === 'booking' ? 'page' : undefined} onClick={goToBooking}>
+                Umów wizytę
+              </button>
+            </li>
+            <li>
+              <button type="button" className="main-nav__btn"
+                aria-current={view === 'visits' ? 'page' : undefined} onClick={goToVisits}>
+                Moje wizyty
+              </button>
+            </li>
+            {session && (
+              <li className="main-nav__logout">
+                <button type="button" className="link-btn" onClick={clearSession}>Wyloguj się</button>
+              </li>
+            )}
+          </ul>
+        </nav>
       </header>
 
-      <main id="main" className="container">
-        <Stepper current={step} />
-        <h1 ref={headingRef} tabIndex={-1} className="page-title">{TITLES[step]}</h1>
+      {/* Baner trybu demo – żeby nikt nie pomylił danych testowych z prawdziwą rezerwacją */}
+      {demo && (
+        <div className="demo-banner" role="status">
+          <p className="container">
+            <strong>Tryb demonstracyjny:</strong> serwer jest niedostępny, rezerwacje nie są zapisywane.
+            Kod SMS: <strong>{DEMO_CODE}</strong>.
+          </p>
+        </div>
+      )}
 
-        {step === 0 && (
+      <main id="main" className="container">
+        {view === 'booking' && <Stepper current={step} />}
+        <h1 ref={headingRef} tabIndex={-1} className="page-title">{title}</h1>
+
+        {view === 'visits' && <MyVisits onBook={goToBooking} />}
+
+        {/* ----- Krok 1: specjalizacja ----- */}
+        {view === 'booking' && step === 0 && (
           <StepSpecialization
             initial={specialization}
             onNext={(s) => {
@@ -71,7 +148,8 @@ export default function App() {
           />
         )}
 
-        {step === 1 && (
+        {/* ----- Krok 2: dzień i godzina ----- */}
+        {view === 'booking' && step === 1 && (
           <StepTerm
             specialization={specialization}
             notice={notice}
@@ -84,23 +162,34 @@ export default function App() {
           />
         )}
 
-        {step === 2 && term && (
+        {/* ----- Krok 3: dane pacjenta i kod SMS ----- */}
+        {view === 'booking' && step === 2 && term && (
           <StepPatient
             term={term}
             onBack={() => setStep(1)}
             onTermTaken={(msg) => {
-              setNotice(msg);
+              // UC.Wizyta.Alt04 – wracamy do wyboru godziny z komunikatem z backendu
+              setNotice(`${msg} Wybierz inną godzinę.`);
               setTerm(null);
               setStep(1);
             }}
-            onDone={(p) => {
-              setPatient(p);
+            onDone={(r, name) => {
+              setReservation(r);
+              setFirstName(name);
               setStep(3);
             }}
           />
         )}
 
-        {step === 3 && term && patient && <StepConfirm term={term} patient={patient} onHome={reset} />}
+        {/* ----- Krok 4: potwierdzenie ----- */}
+        {view === 'booking' && step === 3 && reservation && (
+          <StepConfirm
+            reservation={reservation}
+            firstName={firstName}
+            onHome={resetBooking}
+            onShowVisits={goToVisits}
+          />
+        )}
       </main>
 
       <footer className="site-footer">

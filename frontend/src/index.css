@@ -446,6 +446,119 @@ main { flex: 1; padding-top: 1.5rem; padding-bottom: 3rem; }
   border-radius: 50%;
 }
 
+/* ---------- Menu główne (zakładki „Umów wizytę” / „Moje wizyty”) ---------- */
+.main-nav__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem 1rem;
+}
+.main-nav__btn {
+  min-height: 3rem;
+  padding: 0.5rem 0.25rem;
+  font: inherit;
+  font-size: 1.125rem;
+  font-weight: 700;
+  color: var(--text);
+  background: none;
+  border: 0;
+  /* aktywna zakładka: gruba linia pod spodem – stan widoczny nie tylko kolorem */
+  border-bottom: 0.25rem solid transparent;
+  cursor: pointer;
+}
+.main-nav__btn:hover { color: var(--primary); }
+.main-nav__btn[aria-current='page'] { color: var(--primary); border-bottom-color: var(--primary); }
+.main-nav__logout { margin-left: auto; }
+
+/* ---------- Baner trybu demonstracyjnego ---------- */
+.demo-banner {
+  background: var(--warning-soft);
+  border-bottom: 3px solid var(--warning);
+  padding: 0.75rem 0;
+  font-size: 1.05rem;
+}
+:root[data-contrast='high'] .demo-banner { border-top: 3px solid var(--warning); }
+
+/* ---------- Dodatkowe warianty przycisków i komunikatów ---------- */
+.btn--danger { background: var(--error); color: var(--surface); }
+.btn--danger:hover:not(:disabled) { filter: brightness(0.9); }
+.alert--success { background: var(--success-soft); border-color: var(--success); }
+.alert:focus-visible { outline-offset: 0.3rem; }
+
+/* ---------- Moje wizyty ---------- */
+.visits { display: flex; flex-direction: column; gap: 1.5rem; }
+.visits__section { display: flex; flex-direction: column; gap: 0.75rem; }
+.section-title { margin: 0; font-size: 1.5rem; font-weight: 800; }
+.session-bar { gap: 0.75rem; }
+.session-bar .actions { justify-content: flex-start; }
+
+.visit-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+.visit {
+  background: var(--surface);
+  border: 2px solid var(--border);
+  /* kolorowy pasek po lewej + odznaka z tekstem i ikoną */
+  border-left: 0.5rem solid var(--primary);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 1.25rem 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+.visit--cancelled,
+.visit--no_show { border-left-color: var(--text-muted); }
+.visit--completed { border-left-color: var(--success); }
+.visit__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.5rem 1rem;
+}
+.visit__title { margin: 0; font-size: 1.375rem; font-weight: 800; line-height: 1.3; }
+.visit__details { margin: 0; display: grid; gap: 0.375rem; }
+.visit__details > div { display: grid; grid-template-columns: 7rem 1fr; gap: 1rem; }
+.visit__details dt { color: var(--text-muted); font-weight: 700; }
+.visit__details dd { margin: 0; font-weight: 700; }
+.visit__note { color: var(--text-muted); font-size: 1.05rem; }
+
+.badge {
+  display: inline-block;
+  padding: 0.25rem 0.75rem;
+  font-size: 1rem;
+  font-weight: 800;
+  border: 2px solid currentColor;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+.badge--active { color: var(--primary); background: var(--primary-soft); }
+.badge--completed { color: var(--success); background: var(--success-soft); }
+.badge--cancelled,
+.badge--no_show { color: var(--text-muted); background: var(--bg); }
+
+/* Pytanie „Czy na pewno anulować?” – w miejscu karty, bez okna modalnego */
+.confirm-box {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  padding: 1rem 1.25rem;
+  background: var(--warning-soft);
+  border: 2px solid var(--warning);
+  border-radius: 0.5rem;
+}
+.confirm-box__question { font-weight: 700; }
+.confirm-box .actions { justify-content: flex-start; }
+
 /* ---------- Mobile ---------- */
 @media (max-width: 40rem) {
   body { font-size: 1.125rem; }
@@ -463,6 +576,9 @@ main { flex: 1; padding-top: 1.5rem; padding-bottom: 3rem; }
   .summary > div { grid-template-columns: 1fr; gap: 0; }
   .a11y-bar__inner { justify-content: space-between; }
   .actions .btn { flex: 1 1 100%; }
+  .visit { padding: 1rem; }
+  .visit__details > div { grid-template-columns: 1fr; gap: 0; }
+  .main-nav__logout { margin-left: 0; }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -470,6 +586,6 @@ main { flex: 1; padding-top: 1.5rem; padding-bottom: 3rem; }
 }
 
 @media print {
-  .a11y-bar, .stepper, .actions, .site-footer, .skip-link { display: none; }
+  .a11y-bar, .stepper, .actions, .site-footer, .skip-link, .main-nav, .demo-banner { display: none; }
   body { background: #fff; }
 }

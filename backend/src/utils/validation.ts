@@ -43,6 +43,10 @@ export const isValidBirthDate = (date: unknown): date is string => {
   return year >= 1900 && birthDate <= today;
 };
 
+/** Godzina "HH:MM" w zakresie 00:00–23:59 */
+export const isValidTime = (time: unknown): time is string =>
+  typeof time === "string" && /^([01]\d|2[0-3]):[0-5]\d$/.test(time);
+
 // Imię / nazwisko: litery (także polskie), spacje, myślnik, apostrof.
 const NAME_PATTERN = /^[\p{L}][\p{L}' -]*$/u;
 

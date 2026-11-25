@@ -35,6 +35,41 @@ export const verifyToken = (token: string): JwtPayload => {
   };
 };
 
+/** Dane zalogowanego użytkownika – GET /api/auth/me */
+export interface UserProfile {
+  id: number;
+  firstName: string;
+  lastName: string;
+  phoneNumber: string;
+  role: UserRole;
+}
+
+export const getUserProfile = async (userId: number): Promise<UserProfile> => {
+  const [users] = await pool.execute<
+    Rows<{ ID: number; FirstName: string; LastName: string; PhoneNumber: string; Role: UserRole }>
+  >(
+    `SELECT ID, FirstName, LastName, PhoneNumber, Role
+     FROM \`User\`
+     WHERE ID = ?`,
+    [userId]
+  );
+
+  // Konto usunięte po wydaniu tokenu – traktujemy jak brak zalogowania
+  if (users.length === 0) {
+    throw new AppError("Nie znaleziono użytkownika.", 401);
+  }
+
+  const user = users[0];
+
+  return {
+    id: user.ID,
+    firstName: user.FirstName,
+    lastName: user.LastName,
+    phoneNumber: user.PhoneNumber,
+    role: user.Role
+  };
+};
+
 // Zachowane dla zgodności z istniejącym kodem – AuthError to po prostu AppError.
 export { AppError as AuthError };
 

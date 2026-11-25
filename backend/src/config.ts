@@ -67,4 +67,18 @@ export const config = {
   cancelDeadlineHours: parseIntInRange("CANCEL_DEADLINE_HOURS", 2, 0, 168),
 
   corsOrigin: process.env.CORS_ORIGIN || "http://localhost:5173",
+
+  // Telefon rejestracji – podawany w SMS-ach (np. przy odwołaniu wizyty przez przychodnię)
+  clinicPhone: process.env.CLINIC_PHONE || "22 123 45 67",
+
+  // WF-12: przypomnienia SMS o wizytach
+  remindersEnabled: process.env.REMINDERS_ENABLED !== "false",
+  // Ile godzin przed wizytą wysłać przypomnienie
+  reminderHoursBefore: parseIntInRange("REMINDER_HOURS_BEFORE", 24, 1, 168),
+  // Co ile minut sprawdzać, czy są wizyty do przypomnienia
+  reminderIntervalMinutes: parseIntInRange("REMINDER_INTERVAL_MINUTES", 15, 1, 1440),
+
+  // WF-10: limity przy tworzeniu terminów przez pracownika (ochrona przed pomyłką)
+  maxScheduleRangeDays: 31,
+  maxSlotsPerRequest: 500,
 } as const;

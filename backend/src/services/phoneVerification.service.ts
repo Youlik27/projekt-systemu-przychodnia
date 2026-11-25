@@ -2,6 +2,7 @@ import { createHmac, randomInt, timingSafeEqual } from "node:crypto";
 import { pool, type Rows } from "../db.js";
 import { config } from "../config.js";
 import { sendSms } from "./sms.service.js";
+import type { UserRole } from "../models.js";
 
 export type VerificationPurpose = "register" | "login";
 
@@ -64,10 +65,13 @@ export const sendVerificationCode = async (
 };
 
 // Weryfikacja wprowadzonego kodu
+// `role` ma znaczenie tylko przy logowaniu: pacjent loguje się do „Moje wizyty”,
+// pracownik przychodni – do panelu pracownika (WF-10, WF-11).
 export const verifyPhoneCode = async (
   phoneNumber: string,
   enteredCode: string,
-  purpose: VerificationPurpose
+  purpose: VerificationPurpose,
+  role: UserRole = "patient"
 ): Promise<{ verified: boolean; userId?: number }> => {
   const connection = await pool.getConnection();
 
@@ -140,7 +144,7 @@ export const verifyPhoneCode = async (
       return { verified: false };
     }
 
-    // Przy logowaniu szukamy pacjenta w tej samej transakcji
+    // Przy logowaniu szukamy użytkownika o wskazanej roli w tej samej transakcji
     let userId: number | undefined;
 
     if (purpose === "login") {
@@ -148,9 +152,9 @@ export const verifyPhoneCode = async (
         `SELECT ID
          FROM \`User\`
          WHERE PhoneNumber = ?
-           AND Role = 'patient'
+           AND Role = ?
          FOR UPDATE`,
-        [phoneNumber]
+        [phoneNumber, role]
       );
 
       if (users.length === 0) {

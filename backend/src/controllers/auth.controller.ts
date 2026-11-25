@@ -1,5 +1,6 @@
 import type { Request, Response } from "express";
 import {
+  getUserProfile,
   registerPatient,
   generateToken
 } from "../services/auth.service.js";
@@ -97,6 +98,37 @@ export const postRegister = async (
       error,
       "Registration error",
       "Wystąpił błąd podczas rejestracji."
+    );
+  }
+};
+
+// GET /api/auth/me – kto jest zalogowany (imię do powitania, rola do wyboru widoku)
+export const getMe = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
+  try {
+    if (!req.user) {
+      res.status(401).json({
+        success: false,
+        message: "Wymagane jest zalogowanie."
+      });
+      return;
+    }
+
+    const user = await getUserProfile(req.user.id);
+
+    res.status(200).json({
+      success: true,
+      user
+    });
+
+  } catch (error) {
+    sendUnexpectedError(
+      res,
+      error,
+      "Get current user error",
+      "Nie udało się pobrać danych użytkownika."
     );
   }
 };

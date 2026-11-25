@@ -15,6 +15,21 @@ import { sendUnexpectedError } from "../utils/errors.js";
 const isValidPurpose = (purpose: unknown): purpose is VerificationPurpose =>
   purpose === "register" || purpose === "login";
 
+/**
+ * Rola logującego się użytkownika (pole "role" w treści żądania).
+ * Brak pola = pacjent – dzięki temu istniejący frontend działa bez zmian.
+ * Zwraca null przy nieprawidłowej wartości.
+ */
+const parseRole = (role: unknown): UserRole | null => {
+  if (role === undefined) return "patient";
+  return role === "patient" || role === "staff" ? role : null;
+};
+
+const USER_NOT_FOUND_MESSAGE: Record<UserRole, string> = {
+  patient: "Nie znaleziono pacjenta.",
+  staff: "Nie znaleziono pracownika przychodni z tym numerem."
+};
+
 const INVALID_PHONE_MESSAGE =
   "Nieprawidłowy numer telefonu. Podaj numer w formacie +48XXXXXXXXX.";
 
@@ -28,6 +43,7 @@ export const postSendVerificationCode = async (
 ): Promise<void> => {
   try {
     const { phoneNumber, purpose } = req.body ?? {};
+    const role = parseRole(req.body?.role);
 
     if (!isValidPhone(phoneNumber)) {
       res.status(400).json({
@@ -42,6 +58,15 @@ export const postSendVerificationCode = async (
       res.status(400).json({
         success: false,
         message: "Nieprawidłowy cel weryfikacji."
+      });
+      return;
+    }
+
+    // Konto pracownika zakłada administrator – nie można go zarejestrować samodzielnie
+    if (role === null || (purpose === "register" && role !== "patient")) {
+      res.status(400).json({
+        success: false,
+        message: "Nieprawidłowa rola użytkownika."
       });
       return;
     }
@@ -63,11 +88,11 @@ export const postSendVerificationCode = async (
 
     if (
       purpose === "login" &&
-      (users.length === 0 || users[0].Role !== "patient")
+      (users.length === 0 || users[0].Role !== role)
     ) {
       res.status(404).json({
         success: false,
-        message: "Nie znaleziono pacjenta."
+        message: USER_NOT_FOUND_MESSAGE[role]
       });
       return;
     }
@@ -110,6 +135,7 @@ export const postVerifyPhoneCode = async (
 ): Promise<void> => {
   try {
     const { phoneNumber, code, purpose } = req.body ?? {};
+    const role = parseRole(req.body?.role);
 
     if (!isValidPhone(phoneNumber)) {
       res.status(400).json({
@@ -141,7 +167,15 @@ export const postVerifyPhoneCode = async (
       return;
     }
 
-    const verification = await verifyPhoneCode(phoneNumber, code, purpose);
+    if (role === null || (purpose === "register" && role !== "patient")) {
+      res.status(400).json({
+        success: false,
+        message: "Nieprawidłowa rola użytkownika."
+      });
+      return;
+    }
+
+    const verification = await verifyPhoneCode(phoneNumber, code, purpose, role);
 
     if (!verification.verified) {
       res.status(400).json({
@@ -157,14 +191,15 @@ export const postVerifyPhoneCode = async (
       if (verification.userId === undefined) {
         res.status(404).json({
           success: false,
-          message: "Nie znaleziono pacjenta."
+          message: USER_NOT_FOUND_MESSAGE[role]
         });
         return;
       }
 
+      // Rola w tokenie decyduje o dostępie: pacjent → /reservations, pracownik → /staff (WNF-03)
       const token = generateToken({
         id: verification.userId,
-        role: "patient"
+        role
       });
 
       res.status(200).json({
@@ -173,7 +208,7 @@ export const postVerifyPhoneCode = async (
         token,
         user: {
           id: verification.userId,
-          role: "patient"
+          role
         }
       });
       return;

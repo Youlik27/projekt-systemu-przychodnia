@@ -1,75 +1,168 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
+import Field from '../components/Field';
 import {
   ApiError,
   DEMO_CODE,
   createReservation,
   formatDay,
   formatTime,
+  getCodeLength,
   isDemoMode,
   registerPatient,
   sendCode,
   verifyCode,
   type Purpose,
+  type Reservation,
   type Term,
 } from '../api';
+import { clearSession, setSession, useSession } from '../session';
+import { codeHint, formatPhone, isValidName, isValidPhoneInput, normalizePhone } from '../utils/phone';
 
-// Ekran 3: dane pacjenta + autoryzacja SMS (dokumentacja 4.6, scenariusz 4.4 kroki 5–11).
-// Pacjent, który już jest w bazie – loguje się kodem. Nowy pacjent – podaje dodatkowo
-// datę urodzenia i adres (wymagane przez backend), a konto tworzy się automatycznie (WF-04).
-
-export interface PatientInfo {
-  firstName: string;
-  lastName: string;
-}
+// =====================================================================
+// Ekran 3: dane pacjenta + autoryzacja SMS
+// (dokumentacja 4.6 ekran 3, scenariusz 4.4 kroki 5–11)
+//
+// Przebieg dla pacjenta, który NIE jest zalogowany:
+//   1. Wpisuje telefon, imię i nazwisko → „Wyślij kod SMS”.
+//   2. Próbujemy wysłać kod LOGOWANIA. Jeśli backend odpowie 404 (brak konta),
+//      od razu wysyłamy kod REJESTRACJI – konto założy się automatycznie (WF-04).
+//      Pacjent nie musi wiedzieć, czy ma już konto.
+//   3. Wpisuje kod → weryfikacja → (rejestracja) → rezerwacja → ekran 4.
+//
+// Pacjent ZALOGOWANY (np. wcześniej w „Moje wizyty” albo po poprzedniej
+// rezerwacji) nie dostaje drugiego SMS-a – potwierdza rezerwację jednym przyciskiem.
+// =====================================================================
 
 interface Props {
   term: Term;
   onBack: () => void;
+  /** Termin zajął ktoś inny (409) – wracamy do wyboru godziny z komunikatem */
   onTermTaken: (message: string) => void;
-  onDone: (info: PatientInfo) => void;
+  /** Rezerwacja zapisana – przekazujemy dane do ekranu potwierdzenia */
+  onDone: (reservation: Reservation, firstName?: string) => void;
 }
 
-type Errors = Partial<Record<'firstName' | 'lastName' | 'phone' | 'birthDate' | 'address' | 'code', string>>;
+/** Nazwy pól formularza; backend nazywa telefon "phoneNumber", my "phone". */
+type FieldName = 'firstName' | 'lastName' | 'phone' | 'code';
+type Errors = Partial<Record<FieldName, string>>;
 
-/** Zamienia "600 100 200" / "48600100200" / "+48 600-100-200" na "+48600100200". */
-function normalizePhone(raw: string): string {
-  const digits = raw.replace(/[^\d+]/g, '');
-  if (digits.startsWith('+')) return digits;
-  if (digits.startsWith('48') && digits.length === 11) return `+${digits}`;
-  return `+48${digits}`;
+/** Zamienia błędy pól z backendu ({ phoneNumber: "..." }) na nazwy pól tego formularza. */
+function mapServerErrors(fieldErrors: Record<string, string>): Errors {
+  const mapped: Errors = {};
+  if (fieldErrors.firstName) mapped.firstName = fieldErrors.firstName;
+  if (fieldErrors.lastName) mapped.lastName = fieldErrors.lastName;
+  if (fieldErrors.phoneNumber) mapped.phone = fieldErrors.phoneNumber;
+  if (fieldErrors.code) mapped.code = fieldErrors.code;
+  return mapped;
 }
+
+type Message = { type: 'error' | 'info'; text: string } | null;
 
 export default function StepPatient({ term, onBack, onTermTaken, onDone }: Props) {
+  const session = useSession();
+
+  return (
+    <div className="card">
+      {/* Przypomnienie, jaki termin pacjent wybrał – z możliwością zmiany */}
+      <div className="summary summary--compact" aria-label="Wybrany termin">
+        <p><strong>{term.Specialization}</strong> – dr {term.DoctorFirstName} {term.DoctorLastName}</p>
+        <p>{formatDay(term.StartDate)}, godz. <strong>{formatTime(term.StartDate)}</strong></p>
+        <button type="button" className="link-btn" onClick={onBack}>zmień termin</button>
+      </div>
+
+      {session ? (
+        <LoggedInConfirm term={term} onTermTaken={onTermTaken} onDone={onDone} />
+      ) : (
+        <SmsBookingForm term={term} onTermTaken={onTermTaken} onDone={onDone} />
+      )}
+
+      <div className="actions">
+        <button type="button" className="btn btn--secondary" onClick={onBack}>← Wstecz</button>
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------
+// Wariant A: pacjent zalogowany – rezerwacja jednym kliknięciem
+// ---------------------------------------------------------------------
+
+function LoggedInConfirm({ term, onTermTaken, onDone }: Omit<Props, 'onBack'>) {
+  const session = useSession()!;
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState<Message>(null);
+
+  const confirm = async () => {
+    setBusy(true);
+    setMessage(null);
+    try {
+      const reservation = await createReservation(session.token, term.TermID);
+      onDone(reservation, session.firstName);
+    } catch (e) {
+      if (e instanceof ApiError && e.status === 409) {
+        onTermTaken(e.message);
+        return;
+      }
+      // 401 – token wygasł: session.ts sam wyloguje pacjenta i pokaże się formularz SMS
+      setMessage({
+        type: 'error',
+        text: e instanceof ApiError ? e.message : 'Wystąpił problem techniczny. Spróbuj ponownie za chwilę.',
+      });
+      setBusy(false);
+    }
+  };
+
+  return (
+    <>
+      {message && <p className="alert alert--error" role="alert">{message.text}</p>}
+      <p className="lead">
+        Rezerwujesz jako{session.firstName ? <> <strong>{session.firstName}</strong>,</> : ''} tel.{' '}
+        <strong>{formatPhone(session.phoneNumber)}</strong>.
+      </p>
+      <button type="button" className="btn btn--primary btn--block" onClick={confirm} disabled={busy}>
+        {busy ? 'Rezerwuję…' : 'Potwierdzam rezerwację'}
+      </button>
+      <p>
+        <button type="button" className="link-btn" onClick={clearSession} disabled={busy}>
+          To nie ja – wyloguj i podaj inne dane
+        </button>
+      </p>
+    </>
+  );
+}
+
+// ---------------------------------------------------------------------
+// Wariant B: pacjent niezalogowany – dane + kod SMS
+// ---------------------------------------------------------------------
+
+function SmsBookingForm({ term, onTermTaken, onDone }: Omit<Props, 'onBack'>) {
+  // Wartości pól formularza
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
   const [phone, setPhone] = useState('');
-  const [birthDate, setBirthDate] = useState('');
-  const [address, setAddress] = useState('');
   const [code, setCode] = useState('');
 
-  const [purpose, setPurpose] = useState<Purpose | null>(null); // null = kod jeszcze nie wysłany
-  const [needsRegistration, setNeedsRegistration] = useState(false);
+  // purpose === null → kod jeszcze nie został wysłany (widoczny jest tylko formularz danych)
+  const [purpose, setPurpose] = useState<Purpose | null>(null);
   const [errors, setErrors] = useState<Errors>({});
-  const [message, setMessage] = useState<{ type: 'error' | 'info'; text: string } | null>(null);
+  const [message, setMessage] = useState<Message>(null);
   const [busy, setBusy] = useState(false);
   const codeRef = useRef<HTMLInputElement>(null);
-  const birthRef = useRef<HTMLInputElement>(null);
 
+  const codeLength = getCodeLength();
+  const codeSent = purpose !== null;
+
+  /** Walidacja po stronie przeglądarki – te same reguły co w backendzie. */
   const validateData = (): boolean => {
     const e: Errors = {};
-    if (!firstName.trim()) e.firstName = 'Wpisz imię.';
-    if (!lastName.trim()) e.lastName = 'Wpisz nazwisko.';
-    if (!/^\+[1-9]\d{7,14}$/.test(normalizePhone(phone)) || phone.replace(/\D/g, '').length < 9)
-      e.phone = 'Wpisz numer telefonu – 9 cyfr, np. 600 100 200.';
-    if (needsRegistration) {
-      if (!birthDate) e.birthDate = 'Podaj datę urodzenia.';
-      else if (new Date(birthDate) > new Date()) e.birthDate = 'Data urodzenia nie może być z przyszłości.';
-      if (!address.trim()) e.address = 'Podaj adres zamieszkania.';
-    }
+    if (!isValidName(firstName)) e.firstName = 'Wpisz imię (same litery).';
+    if (!isValidName(lastName)) e.lastName = 'Wpisz nazwisko (same litery).';
+    if (!isValidPhoneInput(phone)) e.phone = 'Wpisz numer telefonu – 9 cyfr, np. 600 100 200.';
     setErrors(e);
     return Object.keys(e).length === 0;
   };
 
+  /** Krok 1: wysłanie kodu SMS (także „Wyślij kod ponownie”). */
   const handleSend = async (ev?: FormEvent) => {
     ev?.preventDefault();
     setMessage(null);
@@ -77,153 +170,151 @@ export default function StepPatient({ term, onBack, onTermTaken, onDone }: Props
     setBusy(true);
     const phoneNumber = normalizePhone(phone);
     try {
-      const p: Purpose = needsRegistration ? 'register' : 'login';
+      // Przy ponownym wysłaniu znamy już cel; za pierwszym razem zaczynamy od logowania
+      let p: Purpose = purpose ?? 'login';
       try {
         await sendCode(phoneNumber, p);
-        setPurpose(p);
       } catch (e) {
-        // Brak konta → pacjent musi uzupełnić dane do automatycznego założenia konta
+        // 404 = brak konta z tym numerem → nowy pacjent, konto założymy automatycznie
         if (p === 'login' && e instanceof ApiError && e.status === 404) {
-          setNeedsRegistration(true);
-          setMessage({
-            type: 'info',
-            text: 'Jesteś u nas pierwszy raz. Podaj jeszcze datę urodzenia i adres – założymy Ci konto automatycznie.',
-          });
-          setTimeout(() => birthRef.current?.focus(), 0);
-          return;
+          p = 'register';
+          await sendCode(phoneNumber, p);
+        } else {
+          throw e;
         }
-        throw e;
       }
-      setMessage({ type: 'info', text: `Wysłaliśmy SMS z kodem na numer ${phoneNumber}.` });
+      setPurpose(p);
+      setCode('');
+      setMessage({
+        type: 'info',
+        text:
+          p === 'register'
+            ? `Jesteś u nas pierwszy raz – po potwierdzeniu kodu założymy Ci konto automatycznie. Wysłaliśmy SMS na numer ${formatPhone(phoneNumber)}.`
+            : `Wysłaliśmy SMS z kodem na numer ${formatPhone(phoneNumber)}.`,
+      });
     } catch (e) {
+      if (e instanceof ApiError && e.status === 400) {
+        setErrors(mapServerErrors(e.fieldErrors));
+      }
+      // Komunikaty backendu są po polsku i zrozumiałe (np. limit SMS-ów 429, błąd bramki SMS 503)
       setMessage({
         type: 'error',
-        text:
-          e instanceof ApiError && e.status === 429
-            ? 'Wysłano zbyt wiele kodów. Odczekaj chwilę i spróbuj ponownie.'
-            : 'Nie udało się wysłać kodu SMS. Spróbuj ponownie za chwilę.',
+        text: e instanceof ApiError ? e.message : 'Nie udało się wysłać kodu SMS. Spróbuj ponownie za chwilę.',
       });
     } finally {
       setBusy(false);
     }
   };
 
+  /** Krok 2: weryfikacja kodu → (rejestracja) → rezerwacja. */
   const handleConfirm = async (ev: FormEvent) => {
     ev.preventDefault();
     setMessage(null);
-    if (!/^\d{6}$/.test(code)) {
-      setErrors({ code: 'Kod składa się z 6 cyfr.' });
+    if (!new RegExp(`^\\d{${codeLength}}$`).test(code)) {
+      // „składa się z N cyfr” – po „z” zawsze dopełniacz, więc bez codeHint()
+      setErrors({ code: `Kod składa się z ${codeLength} cyfr.` });
+      codeRef.current?.focus();
       return;
     }
     setErrors({});
     setBusy(true);
     const phoneNumber = normalizePhone(phone);
+
+    // Etap, na którym jesteśmy – żeby wiedzieć, jak obsłużyć błąd
+    let stage: 'verify' | 'register' | 'reserve' = 'verify';
     try {
       const verified = await verifyCode(phoneNumber, code, purpose!);
       let token = verified.token;
+
       if (purpose === 'register') {
+        stage = 'register';
         const reg = await registerPatient({
           firstName: firstName.trim(),
           lastName: lastName.trim(),
-          address: address.trim(),
-          birthDate,
           phoneNumber,
         });
         token = reg.token;
       }
-      await createReservation(token!, term.TermID);
-      onDone({ firstName: firstName.trim(), lastName: lastName.trim() });
+
+      // Zapamiętujemy sesję – po rezerwacji pacjent zobaczy „Moje wizyty” bez kolejnego SMS-a
+      setSession({ token: token!, phoneNumber, firstName: firstName.trim() });
+
+      stage = 'reserve';
+      const reservation = await createReservation(token!, term.TermID);
+      onDone(reservation, firstName.trim());
     } catch (e) {
-      if (e instanceof ApiError && e.status === 409 && /termin/i.test(e.message)) {
-        onTermTaken('Przepraszamy, ten termin został właśnie zarezerwowany przez innego pacjenta. Wybierz inną godzinę.');
+      const apiError = e instanceof ApiError ? e : null;
+
+      // UC.Wizyta.Alt04 – ktoś zajął termin w międzyczasie → wybór innej godziny
+      if (stage === 'reserve' && apiError?.status === 409) {
+        onTermTaken(apiError.message);
         return;
       }
-      if (e instanceof ApiError && e.status === 400) {
-        setErrors({ code: 'Wprowadzony kod jest nieprawidłowy lub wygasł. Wpisz go ponownie albo wyślij nowy kod.' });
+
+      // UC.Wizyta.Alt02 – błędny lub wygasły kod → można wpisać ponownie albo wysłać nowy
+      if (stage === 'verify' && apiError?.status === 400) {
+        setErrors({ code: `${apiError.message} Wpisz go ponownie albo wyślij nowy kod.` });
         codeRef.current?.focus();
         return;
       }
-      setMessage({ type: 'error', text: 'Wystąpił problem techniczny. Spróbuj ponownie za chwilę.' });
+
+      // UC.B02 – backend odrzucił dane osobowe → odblokowujemy formularz do poprawy
+      if (stage === 'register' && apiError?.status === 400) {
+        setErrors(mapServerErrors(apiError.fieldErrors));
+        setPurpose(null);
+        setMessage({ type: 'error', text: `${apiError.message} Popraw dane i wyślij nowy kod.` });
+        return;
+      }
+
+      // Pozostałe błędy (np. 503 – problem techniczny, UC.B01): pokazujemy komunikat backendu
+      setMessage({
+        type: 'error',
+        text: apiError?.message ?? 'Wystąpił problem techniczny. Spróbuj ponownie za chwilę.',
+      });
     } finally {
       setBusy(false);
     }
   };
 
-  const codeSent = purpose !== null;
-
-  // Po wysłaniu kodu przenosimy fokus do pola kodu (gdy formularz już nie jest zablokowany).
+  // Po wysłaniu kodu przenosimy fokus do pola kodu (gdy formularz już nie jest zablokowany)
   useEffect(() => {
     if (codeSent && !busy) codeRef.current?.focus();
   }, [codeSent, busy]);
-  const field = (
-    id: keyof Errors,
-    label: string,
-    input: React.ReactNode,
-    hint?: string,
-  ) => (
-    <div className="field">
-      <label htmlFor={id} className="field__label">{label}</label>
-      {hint && <p id={`${id}-hint`} className="field__hint">{hint}</p>}
-      {input}
-      {errors[id] && (
-        <p id={`${id}-error`} className="field__error" role="alert">
-          <span aria-hidden="true">⚠ </span>{errors[id]}
-        </p>
-      )}
-    </div>
-  );
-  const describedBy = (id: keyof Errors, hint = false) =>
-    [hint && `${id}-hint`, errors[id] && `${id}-error`].filter(Boolean).join(' ') || undefined;
 
   return (
-    <div className="card">
-      <div className="summary summary--compact" aria-label="Wybrany termin">
-        <p><strong>{term.Specialization}</strong> – dr {term.DoctorFirstName} {term.DoctorLastName}</p>
-        <p>{formatDay(term.StartDate)}, godz. <strong>{formatTime(term.StartDate)}</strong></p>
-        <button type="button" className="link-btn" onClick={onBack}>zmień termin</button>
-      </div>
-
+    <>
       {message && (
         <p className={`alert alert--${message.type}`} role={message.type === 'error' ? 'alert' : 'status'}>
           {message.text}
         </p>
       )}
 
+      {/* Formularz danych – blokowany po wysłaniu kodu (fieldset disabled) */}
       <form onSubmit={handleSend} noValidate>
         <fieldset className="group" disabled={codeSent || busy}>
           <legend className="field__label field__label--big">Twoje dane</legend>
-          {field('phone', 'Numer telefonu', (
-            <input id="phone" className="field__control" type="tel" inputMode="tel" autoComplete="tel"
-              value={phone} onChange={(e) => setPhone(e.target.value)}
-              aria-invalid={!!errors.phone} aria-describedby={describedBy('phone', true)} />
-          ), 'Na ten numer wyślemy kod SMS.')}
-          <div className="field-row">
-            {field('firstName', 'Imię', (
-              <input id="firstName" className="field__control" autoComplete="given-name"
-                value={firstName} onChange={(e) => setFirstName(e.target.value)}
-                aria-invalid={!!errors.firstName} aria-describedby={describedBy('firstName')} />
-            ))}
-            {field('lastName', 'Nazwisko', (
-              <input id="lastName" className="field__control" autoComplete="family-name"
-                value={lastName} onChange={(e) => setLastName(e.target.value)}
-                aria-invalid={!!errors.lastName} aria-describedby={describedBy('lastName')} />
-            ))}
-          </div>
 
-          {needsRegistration && (
-            <div className="field-row">
-              {field('birthDate', 'Data urodzenia', (
-                <input id="birthDate" ref={birthRef} className="field__control" type="date" autoComplete="bday"
-                  value={birthDate} onChange={(e) => setBirthDate(e.target.value)}
-                  aria-invalid={!!errors.birthDate} aria-describedby={describedBy('birthDate')} />
-              ))}
-              {field('address', 'Adres zamieszkania', (
-                <input id="address" className="field__control" autoComplete="street-address"
-                  value={address} onChange={(e) => setAddress(e.target.value)}
-                  aria-invalid={!!errors.address} aria-describedby={describedBy('address')} />
-              ))}
-            </div>
-          )}
+          <Field id="phone" label="Numer telefonu" hint="Na ten numer wyślemy kod SMS." error={errors.phone}>
+            {(aria) => (
+              <input id="phone" className="field__control" type="tel" inputMode="tel" autoComplete="tel"
+                value={phone} onChange={(e) => setPhone(e.target.value)} {...aria} />
+            )}
+          </Field>
+
+          <div className="field-row">
+            <Field id="firstName" label="Imię" error={errors.firstName}>
+              {(aria) => (
+                <input id="firstName" className="field__control" autoComplete="given-name"
+                  value={firstName} onChange={(e) => setFirstName(e.target.value)} {...aria} />
+              )}
+            </Field>
+            <Field id="lastName" label="Nazwisko" error={errors.lastName}>
+              {(aria) => (
+                <input id="lastName" className="field__control" autoComplete="family-name"
+                  value={lastName} onChange={(e) => setLastName(e.target.value)} {...aria} />
+              )}
+            </Field>
+          </div>
 
           {!codeSent && (
             <button type="submit" className="btn btn--primary btn--block" disabled={busy}>
@@ -233,17 +324,19 @@ export default function StepPatient({ term, onBack, onTermTaken, onDone }: Props
         </fieldset>
       </form>
 
+      {/* Formularz kodu – pojawia się dopiero po wysłaniu SMS-a */}
       {codeSent && (
         <form onSubmit={handleConfirm} noValidate className="code-form">
           {isDemoMode() && (
-            <p className="alert alert--info">Tryb demonstracyjny (brak serwera): wpisz kod <strong>{DEMO_CODE}</strong>.</p>
+            <p className="alert alert--info">Tryb demonstracyjny: wpisz kod <strong>{DEMO_CODE}</strong>.</p>
           )}
-          {field('code', 'Wpisz kod z SMS-a', (
-            <input id="code" ref={codeRef} className="field__control field__control--code"
-              inputMode="numeric" autoComplete="one-time-code" maxLength={6}
-              value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, ''))}
-              aria-invalid={!!errors.code} aria-describedby={describedBy('code', true)} />
-          ), '6 cyfr')}
+          <Field id="code" label="Wpisz kod z SMS-a" hint={codeHint(codeLength)} error={errors.code}>
+            {(aria) => (
+              <input id="code" ref={codeRef} className="field__control field__control--code"
+                inputMode="numeric" autoComplete="one-time-code" maxLength={codeLength}
+                value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, ''))} {...aria} />
+            )}
+          </Field>
           <button type="submit" className="btn btn--primary btn--block" disabled={busy}>
             {busy ? 'Rezerwuję…' : 'Potwierdzam rezerwację'}
           </button>
@@ -258,10 +351,6 @@ export default function StepPatient({ term, onBack, onTermTaken, onDone }: Props
           </div>
         </form>
       )}
-
-      <div className="actions">
-        <button type="button" className="btn btn--secondary" onClick={onBack} disabled={busy}>← Wstecz</button>
-      </div>
-    </div>
+    </>
   );
 }

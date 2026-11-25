@@ -1,37 +1,62 @@
 import { useEffect, useMemo, useState } from 'react';
 import { dayKey, formatDay, formatTime, getTermsForSpecialization, type Term } from '../api';
 
-// Ekran 2: kafelki dni + siatka godzin (dokumentacja 4.6).
+// =====================================================================
+// Ekran 2: wybór dnia i godziny (dokumentacja 4.6 ekran 2, WF-02).
+//
+// Wolne terminy wybranej specjalizacji pobieramy z backendu
+// (GET /api/terms?specialization=...), a następnie grupujemy je po dniach:
+//   - górny rząd: duże kafelki dni (z liczbą wolnych terminów),
+//   - dolny rząd: duże przyciski godzin dla wybranego dnia.
+// Kliknięcie godziny od razu przechodzi do kroku 3 – bez dodatkowego „Dalej”.
+// =====================================================================
 
 interface Props {
   specialization: string;
+  /** Komunikat do pokazania na górze, np. „termin został właśnie zarezerwowany” */
   notice?: string;
   onBack: () => void;
   onNext: (term: Term) => void;
 }
 
 export default function StepTerm({ specialization, notice, onBack, onNext }: Props) {
+  /** null = trwa wczytywanie */
   const [terms, setTerms] = useState<Term[] | null>(null);
   const [error, setError] = useState('');
+  /** Wybrany dzień jako klucz "RRRR-MM-DD" */
   const [day, setDay] = useState<string>('');
 
-  const fetchTerms = () =>
+  /** Zwiększenie licznika = ponowne pobranie terminów (przycisk „Spróbuj ponownie”) */
+  const [reloadKey, setReloadKey] = useState(0);
+
+  // Pobranie terminów po wejściu na ekran, po zmianie specjalizacji i po „Spróbuj ponownie”.
+  // Stan ustawiamy dopiero po odpowiedzi serwera; flaga `active` sprawia, że spóźniona
+  // odpowiedź jest ignorowana, jeśli pacjent zdążył już opuścić ekran.
+  useEffect(() => {
+    let active = true;
     getTermsForSpecialization(specialization)
-      .then((t) => {
-        setTerms(t);
-        if (t.length) setDay(dayKey(t[0].StartDate));
+      .then((list) => {
+        if (!active) return;
+        setTerms(list);
+        // domyślnie zaznaczamy pierwszy dzień z wolnymi terminami
+        if (list.length) setDay(dayKey(list[0].StartDate));
       })
-      .catch(() => setError('Nie udało się pobrać terminów. Sprawdź połączenie i spróbuj ponownie.'));
+      .catch(() => {
+        if (active) setError('Nie udało się pobrać terminów. Sprawdź połączenie i spróbuj ponownie.');
+      });
+    return () => {
+      active = false;
+    };
+  }, [specialization, reloadKey]);
 
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(() => void fetchTerms(), [specialization]);
-
-  const load = () => {
+  /** „Spróbuj ponownie” – czyścimy błąd, pokazujemy wczytywanie i pobieramy jeszcze raz */
+  const retry = () => {
     setError('');
     setTerms(null);
-    fetchTerms();
+    setReloadKey((k) => k + 1);
   };
 
+  // Mapa: dzień → lista terminów w tym dniu (terminy przychodzą posortowane po dacie)
   const days = useMemo(() => {
     const map = new Map<string, Term[]>();
     for (const t of terms ?? []) {
@@ -42,6 +67,7 @@ export default function StepTerm({ specialization, notice, onBack, onNext }: Pro
   }, [terms]);
 
   const slots = days.get(day) ?? [];
+  // Jeśli specjalizację ma kilku lekarzy, przy godzinie pokazujemy też nazwisko
   const manyDoctors = new Set(terms?.map((t) => t.DoctorID)).size > 1;
 
   return (
@@ -53,15 +79,19 @@ export default function StepTerm({ specialization, notice, onBack, onNext }: Pro
         <button type="button" className="link-btn" onClick={onBack}>zmień</button>
       </p>
 
+      {/* UC.B01 – problem z połączeniem: komunikat + możliwość ponowienia */}
       {error && (
         <div className="alert alert--error" role="alert">
           <p>{error}</p>
-          <button type="button" className="btn btn--secondary" onClick={load}>Spróbuj ponownie</button>
+          <button type="button" className="btn btn--secondary" onClick={retry}>
+            Spróbuj ponownie
+          </button>
         </div>
       )}
 
       {!terms && !error && <p className="loading" role="status">Szukam wolnych terminów…</p>}
 
+      {/* UC.Wizyta.Alt01 – brak wolnych terminów */}
       {terms && terms.length === 0 && (
         <div className="alert alert--info" role="status">
           <p>Brak wolnych terminów u tego lekarza w najbliższym czasie.</p>
@@ -75,12 +105,14 @@ export default function StepTerm({ specialization, notice, onBack, onNext }: Pro
             <legend className="field__label">1. Wybierz dzień</legend>
             <div className="day-grid">
               {[...days.entries()].map(([k, list]) => {
+                // "czwartek, 20 listopada" → "czwartek" + "20 listopada"
                 const [weekday, ...rest] = formatDay(list[0].StartDate).split(' ');
                 return (
                   <button
                     key={k}
                     type="button"
                     className="tile"
+                    // aria-pressed – czytnik ekranu ogłosi, który dzień jest wybrany
                     aria-pressed={k === day}
                     onClick={() => setDay(k)}
                   >
