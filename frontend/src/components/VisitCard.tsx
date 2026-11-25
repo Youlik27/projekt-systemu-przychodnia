@@ -2,7 +2,8 @@ import { useEffect, useRef, useState } from 'react';
 import { formatDay, formatDayWithYear, formatTime, type Reservation, type ReservationStatus } from '../api';
 
 // =====================================================================
-// Karta jednej wizyty na liście „Moje wizyty” (WF-06) + anulowanie (WF-07).
+// Karta jednej wizyty na liście „Moje wizyty” (WF-06) + anulowanie (WF-07)
+// + zmiana terminu (WF-08).
 //
 // Anulowanie jest dwuetapowe, żeby pacjent nie odwołał wizyty przypadkiem:
 //   „Anuluj wizytę” → pytanie „Czy na pewno…?” → „Tak, anuluj wizytę”.
@@ -23,9 +24,11 @@ interface Props {
   /** Czy trwa anulowanie tej wizyty (przyciski są wtedy zablokowane) */
   busy: boolean;
   onCancel: (visit: Reservation) => void;
+  /** Zmiana terminu (WF-08) – otwiera wybór nowej godziny */
+  onReschedule: (visit: Reservation) => void;
 }
 
-export default function VisitCard({ visit, busy, onCancel }: Props) {
+export default function VisitCard({ visit, busy, onCancel, onReschedule }: Props) {
   const [confirming, setConfirming] = useState(false);
   const questionRef = useRef<HTMLParagraphElement>(null);
   const status = STATUS_LABELS[visit.status];
@@ -63,9 +66,12 @@ export default function VisitCard({ visit, busy, onCancel }: Props) {
         )}
       </dl>
 
-      {/* Anulowanie – tylko jeśli backend na to pozwala (canCancel) */}
+      {/* Zmiana terminu i anulowanie – tylko jeśli backend na to pozwala (canCancel) */}
       {visit.canCancel && !confirming && (
-        <div className="actions">
+        <div className="actions actions--start">
+          <button type="button" className="btn btn--primary" disabled={busy} onClick={() => onReschedule(visit)}>
+            Zmień termin
+          </button>
           <button type="button" className="btn btn--secondary" disabled={busy} onClick={() => setConfirming(true)}>
             Anuluj wizytę
           </button>
@@ -91,7 +97,7 @@ export default function VisitCard({ visit, busy, onCancel }: Props) {
 
       {tooLateToCancel && (
         <p className="visit__note">
-          Tej wizyty nie można już odwołać przez internet. Zadzwoń do rejestracji:{' '}
+          Tej wizyty nie można już odwołać ani przenieść przez internet. Zadzwoń do rejestracji:{' '}
           <a href="tel:+48221234567">(22) 123 45 67</a>.
         </p>
       )}

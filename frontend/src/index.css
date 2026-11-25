@@ -560,6 +560,98 @@ main { flex: 1; padding-top: 1.5rem; padding-bottom: 3rem; }
 .confirm-box .actions { justify-content: flex-start; }
 
 /* ---------- Mobile ---------- */
+/* =========================================================
+   Zmiana terminu (WF-08) i panel pracownika (WF-10, WF-11)
+   ========================================================= */
+.actions--start { justify-content: flex-start; }
+.btn--small { min-height: 2.75rem; padding: 0.5rem 1rem; font-size: 1.05rem; }
+a.main-nav__btn { display: inline-flex; align-items: center; text-decoration: none; }
+
+.reschedule { border-top: 0.5rem solid var(--primary); }
+
+/* Filtry nad harmonogramem i listą rezerwacji – siatka, która zawija się na wąskim ekranie */
+.filters {
+  display: grid;
+  /* min(…, 100%) – przy powiększeniu 200% kolumna nie może być szersza niż ekran */
+  grid-template-columns: repeat(auto-fit, minmax(min(12rem, 100%), 1fr));
+  gap: 1rem;
+  align-items: end;
+}
+.filters .field { min-width: 0; }
+.filters__wide { grid-column: 1 / -1; }
+.filters__nav { grid-column: 1 / -1; }
+.staff-tab { display: flex; flex-direction: column; gap: 1.25rem; }
+.staff-tabs { border-bottom: 2px solid var(--border); }
+
+/* Przełącznik „Dzień / 7 dni” – wciśnięty przycisk ma wypełnienie i aria-pressed */
+.segmented { border: 0; padding: 0; margin: 0; }
+.segmented__options { display: flex; gap: 0; }
+.segmented__btn {
+  flex: 1;
+  min-height: 3rem;
+  padding: 0.5rem 1rem;
+  font: inherit;
+  font-weight: 700;
+  color: var(--primary);
+  background: var(--surface);
+  border: 2px solid var(--primary);
+  cursor: pointer;
+}
+.segmented__btn:first-child { border-radius: 0.5rem 0 0 0.5rem; }
+.segmented__btn:last-child { border-radius: 0 0.5rem 0.5rem 0; border-left: 0; }
+.segmented__btn[aria-pressed='true'] { background: var(--primary); color: var(--primary-text); }
+
+/* Harmonogram */
+.schedule-summary { color: var(--text-muted); }
+.schedule-day { display: flex; flex-direction: column; gap: 0.5rem; }
+.schedule-day__title {
+  margin: 0.5rem 0 0;
+  font-size: 1.25rem;
+  border-bottom: 2px solid var(--border);
+  padding-bottom: 0.25rem;
+}
+/* tylko pierwsza litera wielka: „Piątek, 27 listopada” */
+.schedule-day__title::first-letter { text-transform: uppercase; }
+.term-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.5rem; }
+.term-row {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0.75rem 1rem;
+  background: var(--surface);
+  border: 2px solid var(--border);
+  /* kolorowy pasek po lewej + odznaka z tekstem – stan nie tylko kolorem */
+  border-left: 0.5rem solid var(--success);
+  border-radius: 0.5rem;
+}
+.term-row--reserved { border-left-color: var(--primary); }
+.term-row--blocked { border-left-color: var(--text-muted); background: var(--bg); }
+.term-row--past { opacity: 0.8; }
+.term-row__main { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 1rem; }
+.term-row__time { font-weight: 800; font-size: 1.25rem; font-variant-numeric: tabular-nums; min-width: 7.5rem; }
+.term-row__meta { color: var(--text-muted); font-size: 1rem; }
+.term-row__patient { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; }
+.badge--term-free { color: var(--success); background: var(--success-soft); }
+.badge--term-reserved { color: var(--primary); background: var(--primary-soft); }
+.badge--term-blocked { color: var(--text-muted); background: var(--bg); }
+
+/* Formularz w wierszu (zapis pacjenta na termin) */
+.inline-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding: 1rem;
+  border: 2px dashed var(--primary);
+  border-radius: 0.5rem;
+}
+.inline-form__title { font-weight: 800; }
+
+.check { display: flex; align-items: center; gap: 0.75rem; font-weight: 700; cursor: pointer; min-height: 2.75rem; }
+.check input { width: 1.5rem; height: 1.5rem; accent-color: var(--primary); }
+
+.skipped summary { cursor: pointer; font-weight: 700; }
+.skipped ul { margin: 0.5rem 0 0; padding-left: 1.25rem; font-size: 1rem; }
+
 @media (max-width: 40rem) {
   body { font-size: 1.125rem; }
   .page-title { font-size: 1.75rem; }
@@ -579,6 +671,14 @@ main { flex: 1; padding-top: 1.5rem; padding-bottom: 3rem; }
   .visit { padding: 1rem; }
   .visit__details > div { grid-template-columns: 1fr; gap: 0; }
   .main-nav__logout { margin-left: 0; }
+  /* panel pracownika: mniej zagnieżdżonych odstępów, żeby przy 200% zostało miejsce na tekst */
+  .staff-tab .card { padding: 0.75rem; }
+  .term-row { padding: 0.5rem 0.625rem; border-left-width: 0.3rem; }
+  .btn--small { padding-inline: 0.625rem; }
+  .term-row__time { min-width: 0; }
+  /* przy dużym powiększeniu tekst przycisków i odznak może się zawijać – lepiej niż wyjść poza ekran */
+  .btn { max-width: 100%; white-space: normal; overflow-wrap: break-word; }
+  .badge { white-space: normal; overflow-wrap: break-word; max-width: 100%; }
 }
 
 @media (prefers-reduced-motion: reduce) {
