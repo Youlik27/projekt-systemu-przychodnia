@@ -13,7 +13,7 @@
 // pokazujemy ten błąd pacjentowi – nie udajemy, że rezerwacja się udała.
 // =====================================================================
 
-import { clearSession } from './session';
+import { clearSession, clearStaffSession, getStaffSession } from './session';
 
 // ---------- Typy danych zwracanych przez backend ----------
 
@@ -31,6 +31,13 @@ export interface Term {
 
 /** Cel kodu SMS: logowanie istniejącego pacjenta albo założenie nowego konta. */
 export type Purpose = 'login' | 'register';
+
+/** Rola logującego się użytkownika: pacjent albo pracownik przychodni (panel rejestracji). */
+export type Role = 'patient' | 'staff';
+
+/** Panel pracownika nie ma danych demonstracyjnych – działa tylko z prawdziwym backendem. */
+export const STAFF_NEEDS_SERVER =
+  'Panel pracownika działa tylko z uruchomionym serwerem (backend i baza danych).';
 
 export type ReservationStatus = 'active' | 'cancelled' | 'completed' | 'no_show';
 
@@ -115,7 +122,7 @@ export const DEMO_CODE = '1234';
 
 // ---------- Wysyłanie zapytań ----------
 
-async function request<T>(path: string, init: RequestInit & { token?: string } = {}): Promise<T> {
+export async function request<T>(path: string, init: RequestInit & { token?: string } = {}): Promise<T> {
   const { token, ...fetchInit } = init;
   const headers: Record<string, string> = { 'Content-Type': 'application/json' };
   if (token) headers.Authorization = `Bearer ${token}`;
@@ -141,7 +148,11 @@ async function request<T>(path: string, init: RequestInit & { token?: string } =
 
   if (!res.ok) {
     // 401 przy zapytaniu z tokenem = token wygasł lub jest nieprawidłowy → wylogowujemy
-    if (res.status === 401 && token) clearSession();
+    //    (token pracownika → wylogowujemy pracownika, w przeciwnym razie pacjenta)
+    if (res.status === 401 && token) {
+      if (token === getStaffSession()?.token) clearStaffSession();
+      else clearSession();
+    }
 
     throw new ApiError(res.status, data?.message ?? 'Wystąpił nieoczekiwany błąd.', data?.errors ?? {});
   }
@@ -331,17 +342,19 @@ export function getTermsForSpecialization(specialization: string): Promise<Term[
  * - purpose 'login' + brak pacjenta → ApiError 404,
  * - purpose 'register' + pacjent już istnieje → ApiError 409.
  */
-export async function sendCode(phoneNumber: string, purpose: Purpose): Promise<void> {
+export async function sendCode(phoneNumber: string, purpose: Purpose, role: Role = 'patient'): Promise<void> {
   await withFallback(
     async () => {
       const res = await request<{ codeLength?: number }>('/phone-verification/send', {
         method: 'POST',
-        body: JSON.stringify({ phoneNumber, purpose }),
+        // pole "role" wysyłamy tylko dla pracownika – pacjent to domyślna rola w backendzie
+        body: JSON.stringify({ phoneNumber, purpose, ...(role === 'staff' && { role }) }),
       });
       if (typeof res.codeLength === 'number') codeLength = res.codeLength;
     },
     async () => {
       await delay();
+      if (role === 'staff') throw new ApiError(503, STAFF_NEEDS_SERVER);
       codeLength = DEMO_CODE.length;
       const exists = MOCK_PATIENTS.has(phoneNumber);
       if (purpose === 'login' && !exists) throw new ApiError(404, 'Nie znaleziono pacjenta.');
@@ -357,12 +370,17 @@ export interface VerifyResult {
 }
 
 /** Sprawdza kod SMS. POST /api/phone-verification/verify. Błędny/wygasły kod → ApiError 400. */
-export function verifyCode(phoneNumber: string, code: string, purpose: Purpose): Promise<VerifyResult> {
+export function verifyCode(
+  phoneNumber: string,
+  code: string,
+  purpose: Purpose,
+  role: Role = 'patient',
+): Promise<VerifyResult> {
   return withFallback(
     () =>
       request<VerifyResult>('/phone-verification/verify', {
         method: 'POST',
-        body: JSON.stringify({ phoneNumber, code, purpose }),
+        body: JSON.stringify({ phoneNumber, code, purpose, ...(role === 'staff' && { role }) }),
       }),
     async () => {
       await delay();
@@ -463,6 +481,50 @@ export function cancelReservation(token: string, reservationId: number): Promise
     },
   );
 }
+
+/**
+ * WF-08: zmiana terminu własnej wizyty. PATCH /api/reservations/:id/reschedule
+ * Nowy termin musi być tej samej specjalizacji; numer rezerwacji się nie zmienia,
+ * a stary termin wraca do puli wolnych. Termin zajęty w międzyczasie → ApiError 409.
+ */
+export function rescheduleReservation(token: string, reservationId: number, termId: number): Promise<Reservation> {
+  return withFallback(
+    async () => {
+      const res = await request<{ reservation: Reservation }>(`/reservations/${reservationId}/reschedule`, {
+        method: 'PATCH',
+        token,
+        body: JSON.stringify({ termId }),
+      });
+      return res.reservation;
+    },
+    async () => {
+      await delay();
+      const r = mockReservations.find((x) => x.id === reservationId && x.phone === phoneFromMockToken(token));
+      if (!r) throw new ApiError(404, 'Nie znaleziono rezerwacji.');
+      if (!toReservation(r).canCancel)
+        throw new ApiError(409, 'Tej wizyty nie można już przenieść przez internet.');
+      const term = MOCK_TERMS.find((t) => t.TermID === termId);
+      if (!term || term.Specialization !== r.term.Specialization)
+        throw new ApiError(400, 'Wybierz termin u lekarza tej samej specjalizacji.');
+      if (mockReserved.has(termId))
+        throw new ApiError(409, 'Przepraszamy, ten termin został właśnie zarezerwowany przez innego pacjenta.');
+      mockReserved.delete(r.term.TermID); // stary termin wraca do puli wolnych
+      mockReserved.add(termId);
+      r.term = term;
+      return toReservation(r);
+    },
+  );
+}
+
+/** Data w formacie "RRRR-MM-DD" w strefie czasowej przeglądarki (np. dzisiejsza data dla filtrów). */
+export const toIsoDate = (d: Date) =>
+  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+
+/** Dodaje dni do daty "RRRR-MM-DD" i zwraca nową datę w tym samym formacie. */
+export const addDays = (iso: string, days: number) => {
+  const [y, m, d] = iso.split('-').map(Number);
+  return toIsoDate(new Date(y, m - 1, d + days));
+};
 
 // =====================================================================
 // Formatowanie dat (zawsze po polsku, w strefie czasowej przeglądarki)

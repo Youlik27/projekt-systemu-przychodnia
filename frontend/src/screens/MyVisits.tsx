@@ -1,14 +1,25 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import VisitCard from '../components/VisitCard';
+import RescheduleVisit from '../components/RescheduleVisit';
 import VisitsLogin from './VisitsLogin';
-import { ApiError, cancelReservation, formatDay, formatTime, getMyReservations, type Reservation } from '../api';
+import {
+  ApiError,
+  cancelReservation,
+  formatDay,
+  formatTime,
+  getMyReservations,
+  rescheduleReservation,
+  type Reservation,
+  type Term,
+} from '../api';
 import { clearSession, useSession, type Session } from '../session';
 import { formatPhone } from '../utils/phone';
 
 // =====================================================================
 // Ekran „Moje wizyty” – druga funkcjonalność systemu.
 //   WF-06: przeglądanie własnych rezerwacji,
-//   WF-07: anulowanie rezerwacji zgodnie z zasadami przychodni.
+//   WF-07: anulowanie rezerwacji zgodnie z zasadami przychodni,
+//   WF-08: zmiana terminu wizyty.
 //
 // Niezalogowany pacjent widzi formularz logowania kodem SMS (VisitsLogin),
 // zalogowany – listę wizyt podzieloną na „Nadchodzące” i „Historia”.
@@ -56,6 +67,8 @@ function VisitsList({ session, onBook, onSessionExpired }: ListProps) {
   const [result, setResult] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   /** ID wizyty, którą właśnie anulujemy */
   const [cancellingId, setCancellingId] = useState<number | null>(null);
+  /** Wizyta, której termin pacjent właśnie zmienia (WF-08); null = widok listy */
+  const [rescheduling, setRescheduling] = useState<Reservation | null>(null);
   const resultRef = useRef<HTMLParagraphElement>(null);
 
   /** Obsługa błędu wspólna dla wczytywania i anulowania. Zwraca tekst do pokazania. */
@@ -123,6 +136,22 @@ function VisitsList({ session, onBook, onSessionExpired }: ListProps) {
     }
   };
 
+  /** Zapis nowego terminu – błędy (np. 409 zajęty termin) pokazuje RescheduleVisit */
+  const handleReschedule = async (visit: Reservation, term: Term) => {
+    try {
+      const updated = await rescheduleReservation(session.token, visit.id, term.TermID);
+      setRescheduling(null);
+      setResult({
+        type: 'success',
+        text: `Termin zmieniony. Nowy termin: ${formatDay(updated.startDate)}, godz. ${formatTime(updated.startDate)}.`,
+      });
+      reload();
+    } catch (e) {
+      describeError(e); // 401 → wylogowanie i formularz logowania
+      throw e;
+    }
+  };
+
   // Podział na nadchodzące (zaplanowane) i historię (odbyte, anulowane, nieobecności)
   const upcoming = visits?.filter((v) => v.isUpcoming && v.status === 'active') ?? [];
   const history = visits?.filter((v) => !(v.isUpcoming && v.status === 'active')) ?? [];
@@ -157,7 +186,17 @@ function VisitsList({ session, onBook, onSessionExpired }: ListProps) {
 
       {!visits && !loadError && <p className="loading" role="status">Wczytywanie wizyt…</p>}
 
-      {visits && (
+      {rescheduling && (
+        <RescheduleVisit
+          specialization={rescheduling.doctor.specialization}
+          currentStart={rescheduling.startDate}
+          heading="Zmiana terminu wizyty"
+          onConfirm={(term) => handleReschedule(rescheduling, term)}
+          onClose={() => setRescheduling(null)}
+        />
+      )}
+
+      {visits && !rescheduling && (
         <>
           <section aria-labelledby="upcoming-title" className="visits__section">
             <h2 id="upcoming-title" className="section-title">Nadchodzące wizyty ({upcoming.length})</h2>
@@ -170,7 +209,8 @@ function VisitsList({ session, onBook, onSessionExpired }: ListProps) {
               <ul className="visit-list">
                 {upcoming.map((v) => (
                   <li key={v.id}>
-                    <VisitCard visit={v} busy={cancellingId === v.id} onCancel={handleCancel} />
+                    <VisitCard visit={v} busy={cancellingId === v.id} onCancel={handleCancel}
+                      onReschedule={(visit) => { setResult(null); setRescheduling(visit); }} />
                   </li>
                 ))}
               </ul>
@@ -183,7 +223,7 @@ function VisitsList({ session, onBook, onSessionExpired }: ListProps) {
               <ul className="visit-list">
                 {history.map((v) => (
                   <li key={v.id}>
-                    <VisitCard visit={v} busy={false} onCancel={handleCancel} />
+                    <VisitCard visit={v} busy={false} onCancel={handleCancel} onReschedule={setRescheduling} />
                   </li>
                 ))}
               </ul>
