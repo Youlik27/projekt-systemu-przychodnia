@@ -1,5 +1,15 @@
 node_modules/
 dist/
-.env
 *.log
 .DS_Store
+
+# Klucze i sekrety – nigdy nie trafiają do repozytorium.
+# Wzorzec konfiguracji jest w backend/.env.example.
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+secrets/

@@ -1,77 +1,77 @@
 import { createHmac, randomInt, timingSafeEqual } from "node:crypto";
 import { pool, type Rows } from "../db.js";
+import { config } from "../config.js";
 import { sendSms } from "./sms.service.js";
+import type { UserRole } from "../models.js";
 
-const OTP_EXPIRATION_MINUTES = 5;
-const MAX_ATTEMPTS = 5;
+export type VerificationPurpose = "register" | "login";
 
-export class PhoneVerificationError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = "PhoneVerificationError";
+/** Błąd bramki SMS (UC.B03) – kontroler zamienia go na czytelny komunikat. */
+export class SmsDeliveryError extends Error {
+  constructor(cause: unknown) {
+    super("SMS delivery failed", { cause });
+    this.name = "SmsDeliveryError";
   }
 }
 
-const hashCode = (code: string): string => {
-  const secret = process.env.OTP_SECRET;
-
-  if (!secret) {
-    throw new PhoneVerificationError(
-      "Brak konfiguracji OTP_SECRET."
-    );
-  }
-
-  return createHmac("sha256", secret)
+export const hashCode = (code: string): string =>
+  createHmac("sha256", config.otpSecret)
     .update(code)
     .digest("hex");
+
+export const generateCode = (): string => {
+  const min = 10 ** (config.otpLength - 1);
+  const max = 10 ** config.otpLength;
+  return randomInt(min, max).toString();
 };
 
-// Генерація та надсилання коду
-export type VerificationPurpose = "register" | "login";
-
+// Generowanie i wysyłanie kodu
 export const sendVerificationCode = async (
   phoneNumber: string,
   purpose: VerificationPurpose
 ): Promise<void> => {
-  const code = randomInt(100000, 1000000).toString();
+  const code = generateCode();
   const codeHash = hashCode(code);
 
   await pool.execute(
     `INSERT INTO PhoneVerification
-  (PhoneNumber, CodeHash, ExpiresAt, Attempts, Purpose)
-VALUES (?, ?, DATE_ADD(NOW(), INTERVAL ? MINUTE), 0, ?)
-ON DUPLICATE KEY UPDATE
-  CodeHash = VALUES(CodeHash),
-  ExpiresAt = VALUES(ExpiresAt),
-  Attempts = 0,
-  VerifiedAt = NULL,
-  Purpose = VALUES(Purpose),
-  CreatedAt = CURRENT_TIMESTAMP`,
-    [phoneNumber, codeHash, OTP_EXPIRATION_MINUTES, purpose]
+       (PhoneNumber, CodeHash, ExpiresAt, Attempts, Purpose)
+     VALUES (?, ?, DATE_ADD(NOW(), INTERVAL ? MINUTE), 0, ?)
+     ON DUPLICATE KEY UPDATE
+       CodeHash = VALUES(CodeHash),
+       ExpiresAt = VALUES(ExpiresAt),
+       Attempts = 0,
+       VerifiedAt = NULL,
+       Purpose = VALUES(Purpose),
+       CreatedAt = CURRENT_TIMESTAMP`,
+    [phoneNumber, codeHash, config.otpExpirationMinutes, purpose]
   );
 
   try {
     await sendSms({
       phoneNumber,
-      message: `Twoj kod weryfikacyjny: ${code}. Kod jest wazny przez 5 minut.`
+      message: `Twoj kod weryfikacyjny: ${code}. Kod jest wazny przez ${config.otpExpirationMinutes} minut.`
     });
   } catch (error) {
-    // Видаляємо код, якщо надсилання SMS завершилося помилкою
+    // Usuwamy kod, jeśli wysyłka SMS się nie powiodła
     await pool.execute(
       `DELETE FROM PhoneVerification
        WHERE PhoneNumber = ? AND CodeHash = ?`,
       [phoneNumber, codeHash]
     );
 
-    throw error;
+    throw new SmsDeliveryError(error);
   }
 };
 
-// Перевірка введеного коду
+// Weryfikacja wprowadzonego kodu
+// `role` ma znaczenie tylko przy logowaniu: pacjent loguje się do „Moje wizyty”,
+// pracownik przychodni – do panelu pracownika (WF-10, WF-11).
 export const verifyPhoneCode = async (
   phoneNumber: string,
   enteredCode: string,
-  purpose: VerificationPurpose
+  purpose: VerificationPurpose,
+  role: UserRole = "patient"
 ): Promise<{ verified: boolean; userId?: number }> => {
   const connection = await pool.getConnection();
 
@@ -87,37 +87,38 @@ export const verifyPhoneCode = async (
       }>
     >(
       `SELECT
-  CodeHash,
-  Attempts,
-  VerifiedAt,
-  (ExpiresAt <= NOW()) AS IsExpired
-FROM PhoneVerification
-WHERE PhoneNumber = ?
-  AND Purpose = ?
-FOR UPDATE`,
+         CodeHash,
+         Attempts,
+         VerifiedAt,
+         (ExpiresAt <= NOW()) AS IsExpired
+       FROM PhoneVerification
+       WHERE PhoneNumber = ?
+         AND Purpose = ?
+       FOR UPDATE`,
       [phoneNumber, purpose]
     );
 
     if (records.length === 0) {
-  await connection.commit();
-  return { verified: false };
-}
+      await connection.commit();
+      return { verified: false };
+    }
 
     const verification = records[0];
 
+    // Kod już wykorzystany – nie może zostać użyty ponownie (WNF-04)
     if (verification.VerifiedAt !== null) {
-  await connection.commit();
-  return { verified: false };
-}
+      await connection.commit();
+      return { verified: false };
+    }
 
     if (
       verification.IsExpired === 1 ||
-      verification.Attempts >= MAX_ATTEMPTS
+      verification.Attempts >= config.otpMaxAttempts
     ) {
       await connection.execute(
         `DELETE FROM PhoneVerification
          WHERE PhoneNumber = ?
-            AND Purpose = ?`,
+           AND Purpose = ?`,
         [phoneNumber, purpose]
       );
 
@@ -125,11 +126,9 @@ FOR UPDATE`,
       return { verified: false };
     }
 
-    const enteredHash = hashCode(enteredCode);
-
     const isCorrect = timingSafeEqual(
       Buffer.from(verification.CodeHash, "hex"),
-      Buffer.from(enteredHash, "hex")
+      Buffer.from(hashCode(enteredCode), "hex")
     );
 
     if (!isCorrect) {
@@ -137,7 +136,7 @@ FOR UPDATE`,
         `UPDATE PhoneVerification
          SET Attempts = Attempts + 1
          WHERE PhoneNumber = ?
-            AND Purpose = ?`,
+           AND Purpose = ?`,
         [phoneNumber, purpose]
       );
 
@@ -145,53 +144,50 @@ FOR UPDATE`,
       return { verified: false };
     }
 
-   // Під час входу шукаємо пацієнта в тій самій транзакції
-let userId: number | undefined;
+    // Przy logowaniu szukamy użytkownika o wskazanej roli w tej samej transakcji
+    let userId: number | undefined;
 
-if (purpose === "login") {
-  const [users] = await connection.execute<
-    Rows<{ ID: number }>
-  >(
-    `SELECT ID
-     FROM \`User\`
-     WHERE PhoneNumber = ?
-       AND Role = 'patient'
-     FOR UPDATE`,
-    [phoneNumber]
-  );
+    if (purpose === "login") {
+      const [users] = await connection.execute<Rows<{ ID: number }>>(
+        `SELECT ID
+         FROM \`User\`
+         WHERE PhoneNumber = ?
+           AND Role = ?
+         FOR UPDATE`,
+        [phoneNumber, role]
+      );
 
-  if (users.length === 0) {
+      if (users.length === 0) {
+        await connection.execute(
+          `DELETE FROM PhoneVerification
+           WHERE PhoneNumber = ?
+             AND Purpose = ?`,
+          [phoneNumber, purpose]
+        );
+
+        await connection.commit();
+        return { verified: false };
+      }
+
+      userId = users[0].ID;
+    }
+
+    // Oznaczamy kod jako wykorzystany
     await connection.execute(
-      `DELETE FROM PhoneVerification
+      `UPDATE PhoneVerification
+       SET VerifiedAt = NOW()
        WHERE PhoneNumber = ?
-         AND Purpose = ?`,
+         AND Purpose = ?
+         AND VerifiedAt IS NULL`,
       [phoneNumber, purpose]
     );
 
     await connection.commit();
 
-    return { verified: false };
-  }
-
-  userId = users[0].ID;
-}
-
-// Позначаємо код як використаний
-await connection.execute(
-  `UPDATE PhoneVerification
-   SET VerifiedAt = NOW()
-   WHERE PhoneNumber = ?
-     AND Purpose = ?
-     AND VerifiedAt IS NULL`,
-  [phoneNumber, purpose]
-);
-
-await connection.commit();
-
-return {
-  verified: true,
-  ...(userId !== undefined && { userId })
-};
+    return {
+      verified: true,
+      ...(userId !== undefined && { userId })
+    };
 
   } catch (error) {
     await connection.rollback();

@@ -1,38 +1,20 @@
 import type { Request, Response } from "express";
 import {
-  AuthError,
+  getUserProfile,
   registerPatient,
   generateToken
 } from "../services/auth.service.js";
+import {
+  type FieldErrors,
+  isOptionalEmpty,
+  isValidBirthDate,
+  isValidName,
+  isValidPhone
+} from "../utils/validation.js";
+import { sendUnexpectedError } from "../utils/errors.js";
 
-// Перевірка коректності дати народження
-const isValidBirthDate = (date: string): boolean => {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
-    return false;
-  }
-
-  const [year, month, day] = date.split("-").map(Number);
-
-  const parsedDate = new Date(Date.UTC(year, month - 1, day));
-
-  const isRealDate =
-    parsedDate.getUTCFullYear() === year &&
-    parsedDate.getUTCMonth() === month - 1 &&
-    parsedDate.getUTCDate() === day;
-
-  if (!isRealDate) {
-    return false;
-  }
-
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-
-  const birthDate = new Date(year, month - 1, day);
-
-  return birthDate <= today;
-};
-
-// Реєстрація нового пацієнта
+// Rejestracja nowego pacjenta (WF-04).
+// Wymagane: imię, nazwisko, telefon. Adres i data urodzenia są opcjonalne.
 export const postRegister = async (
   req: Request,
   res: Response
@@ -46,30 +28,56 @@ export const postRegister = async (
       phoneNumber
     } = req.body ?? {};
 
+    // UC.B02 – wskazujemy konkretne pola wymagające poprawy
+    const errors: FieldErrors = {};
+
+    if (!isValidName(firstName)) {
+      errors.firstName = "Podaj poprawne imię.";
+    }
+
+    if (!isValidName(lastName)) {
+      errors.lastName = "Podaj poprawne nazwisko.";
+    }
+
+    if (!isValidPhone(phoneNumber)) {
+      errors.phoneNumber =
+        "Podaj numer telefonu w formacie +48XXXXXXXXX.";
+    }
+
+    const hasAddress = !isOptionalEmpty(address);
+
     if (
-      typeof firstName !== "string" || !firstName.trim() ||
-      typeof lastName !== "string" || !lastName.trim() ||
-      typeof address !== "string" || !address.trim() ||
-      typeof birthDate !== "string" ||
-      !isValidBirthDate(birthDate) ||
-      typeof phoneNumber !== "string" ||
-      !/^\+[1-9]\d{7,14}$/.test(phoneNumber)
+      hasAddress &&
+      (typeof address !== "string" || address.trim().length > 255)
     ) {
+      errors.address = "Adres jest nieprawidłowy (maks. 255 znaków).";
+    }
+
+    const hasBirthDate = !isOptionalEmpty(birthDate);
+
+    if (hasBirthDate && !isValidBirthDate(birthDate)) {
+      errors.birthDate =
+        "Podaj poprawną datę urodzenia w formacie RRRR-MM-DD.";
+    }
+
+    if (Object.keys(errors).length > 0) {
       res.status(400).json({
         success: false,
-        message: "Nieprawidłowe lub niekompletne dane pacjenta."
+        message: "Nieprawidłowe lub niekompletne dane pacjenta.",
+        errors
       });
       return;
     }
 
-    const userId = await registerPatient({
-      firstName: firstName.trim(),
-      lastName: lastName.trim(),
-      address: address.trim(),
-      birthDate,
-      phoneNumber
-    });
+    const patient = {
+      firstName: (firstName as string).trim(),
+      lastName: (lastName as string).trim(),
+      phoneNumber: phoneNumber as string,
+      address: hasAddress ? (address as string).trim() : null,
+      birthDate: hasBirthDate ? (birthDate as string) : null
+    };
 
+    const userId = await registerPatient(patient);
     const token = generateToken({ id: userId, role: "patient" });
 
     res.status(201).json({
@@ -78,27 +86,49 @@ export const postRegister = async (
       token,
       user: {
         id: userId,
-        firstName: firstName.trim(),
-        lastName: lastName.trim(),
+        firstName: patient.firstName,
+        lastName: patient.lastName,
         role: "patient"
       }
     });
 
   } catch (error) {
-    if (error instanceof AuthError) {
-      res.status(error.statusCode).json({
+    sendUnexpectedError(
+      res,
+      error,
+      "Registration error",
+      "Wystąpił błąd podczas rejestracji."
+    );
+  }
+};
+
+// GET /api/auth/me – kto jest zalogowany (imię do powitania, rola do wyboru widoku)
+export const getMe = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
+  try {
+    if (!req.user) {
+      res.status(401).json({
         success: false,
-        message: error.message
+        message: "Wymagane jest zalogowanie."
       });
       return;
     }
 
-    console.error("Registration error:", error);
+    const user = await getUserProfile(req.user.id);
 
-    res.status(500).json({
-      success: false,
-      message: "Wystąpił błąd podczas rejestracji."
+    res.status(200).json({
+      success: true,
+      user
     });
+
+  } catch (error) {
+    sendUnexpectedError(
+      res,
+      error,
+      "Get current user error",
+      "Nie udało się pobrać danych użytkownika."
+    );
   }
 };
-

@@ -1,8 +1,9 @@
-
 import { pool } from "../db.js";
 import type { Term } from "../models.js";
 import type { Rows } from "../db.js";
 import type { Request, Response } from "express";
+import { isPositiveIntString, isValidIsoDate } from "../utils/validation.js";
+import { sendUnexpectedError } from "../utils/errors.js";
 
 interface AvailableTerm extends Term {
   DoctorFirstName: string;
@@ -10,6 +11,8 @@ interface AvailableTerm extends Term {
   Specialization: string;
 }
 
+// WF-02: wolne terminy, opcjonalnie filtrowane po lekarzu, specjalizacji i dniu.
+// GET /api/terms?doctorId=1&specialization=Kardiolog&date=2026-11-20
 export const getAvailableTerms = async (
   req: Request,
   res: Response
@@ -23,14 +26,10 @@ export const getAvailableTerms = async (
 
     const params: (string | number)[] = [];
 
-    const doctorId = req.query.doctorId;
+    const { doctorId, specialization, date } = req.query;
 
     if (doctorId !== undefined) {
-      if (
-        typeof doctorId !== "string" ||
-        !/^[1-9]\d*$/.test(doctorId) ||
-        !Number.isSafeInteger(Number(doctorId))
-      ) {
+      if (!isPositiveIntString(doctorId)) {
         res.status(400).json({
           success: false,
           message: "Nieprawidłowe ID lekarza."
@@ -42,29 +41,28 @@ export const getAvailableTerms = async (
       params.push(Number(doctorId));
     }
 
-    const date = req.query.date;
-
-    if (date !== undefined) {
+    if (specialization !== undefined) {
       if (
-        typeof date !== "string" ||
-        !/^\d{4}-\d{2}-\d{2}$/.test(date)
+        typeof specialization !== "string" ||
+        !specialization.trim() ||
+        specialization.length > 255
       ) {
         res.status(400).json({
           success: false,
-          message: "Nieprawidłowy format daty. Wymagany format: YYYY-MM-DD."
+          message: "Nieprawidłowa specjalizacja."
         });
         return;
       }
 
-      const parsedDate = new Date(`${date}T00:00:00Z`);
+      conditions.push("d.Specialization = ?");
+      params.push(specialization.trim());
+    }
 
-      if (
-        Number.isNaN(parsedDate.getTime()) ||
-        parsedDate.toISOString().slice(0, 10) !== date
-      ) {
+    if (date !== undefined) {
+      if (!isValidIsoDate(date)) {
         res.status(400).json({
           success: false,
-          message: "Podana data nie jest prawidłowa."
+          message: "Nieprawidłowa data. Wymagany format: RRRR-MM-DD."
         });
         return;
       }
@@ -72,7 +70,6 @@ export const getAvailableTerms = async (
       conditions.push(
         "t.StartDate >= ? AND t.StartDate < DATE_ADD(?, INTERVAL 1 DAY)"
       );
-
       params.push(date, date);
     }
 
@@ -90,22 +87,19 @@ export const getAvailableTerms = async (
       FROM Terms t
       INNER JOIN Doctor d ON t.DoctorID = d.ID
       WHERE ${conditions.join(" AND ")}
-      ORDER BY t.StartDate ASC
+      ORDER BY t.StartDate ASC, d.LastName ASC
     `;
 
-    const [terms] = await pool.execute<Rows<AvailableTerm>>(
-      sql,
-      params
-    );
+    const [terms] = await pool.execute<Rows<AvailableTerm>>(sql, params);
 
     res.status(200).json(terms);
 
   } catch (error) {
-    console.error("Error fetching available terms:", error);
-
-    res.status(500).json({
-      success: false,
-      message: "Nie udało się pobrać dostępnych terminów."
-    });
+    sendUnexpectedError(
+      res,
+      error,
+      "Error fetching available terms",
+      "Nie udało się pobrać dostępnych terminów."
+    );
   }
 };
