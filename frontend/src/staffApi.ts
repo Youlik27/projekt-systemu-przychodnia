@@ -164,3 +164,42 @@ export function setVisitOutcome(
 export function runReminders(token: string): Promise<{ message: string }> {
   return staffRequest(token, '/staff/reminders/run', { method: 'POST' });
 }
+
+export interface StaffReportSummary {
+  total: number;
+  active: number;
+  completed: number;
+  cancelled: number;
+  no_show: number;
+}
+
+export interface StaffDoctorReport {
+  doctorId: number;
+  firstName: string;
+  lastName: string;
+  specialization: string;
+  total: number;
+  active: number;
+  completed: number;
+  cancelled: number;
+  no_show: number;
+}
+
+export interface StaffReport {
+  success: boolean;
+  from: string;
+  to: string;
+  summary: StaffReportSummary;
+  doctors: StaffDoctorReport[];
+}
+
+export async function getStaffReport(
+  token: string,
+  from: string,
+  to: string
+): Promise<StaffReport> {
+  return staffRequest(
+    token,
+    `/staff/reports?${new URLSearchParams({ from, to }).toString()}`
+  );
+}

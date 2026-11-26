@@ -7,6 +7,7 @@ import doctorRoutes from "./routes/doctor.routes.js";
 import phoneVerificationRoutes from "./routes/phoneVerification.routes.js";
 import authRoutes from "./routes/auth.routes.js";
 import staffRoutes from "./routes/staff.routes.js";
+import reportRoutes from "./routes/report.routes.js";
 import {
   errorHandler,
   notFoundHandler
@@ -32,6 +33,7 @@ export const createApp = () => {
   app.use("/api", authRoutes);
   // Panel pracownika przychodni (WF-10, WF-11, WF-12) – tylko rola "staff"
   app.use("/api", staffRoutes);
+  app.use("/api", reportRoutes);
 
   app.use(notFoundHandler);
   app.use(errorHandler);
