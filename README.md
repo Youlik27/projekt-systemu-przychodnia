@@ -1,8 +1,78 @@
-# Projekt systemu przychodni
+# System wspomagający rezerwację terminów do lekarza
 
 ## Nazwa projektu
 
 **System wspomagający rezerwację terminów do lekarza dla nowo otwartej przychodni**
+
+## Opis projektu
+
+Projekt zakłada stworzenie aplikacji internetowej umożliwiającej pacjentom samodzielne wyszukiwanie i rezerwowanie terminów wizyt lekarskich.
+
+System jest przeznaczony dla dwóch grup użytkowników: pacjentów oraz pracowników przychodni.
+
+Pacjenci mogą przeglądać dostępnych lekarzy, wybierać specjalizacje i wolne terminy, dokonywać rezerwacji, a także zarządzać swoimi wizytami.
+
+Pracownicy przychodni mają dostęp do dedykowanego panelu administracyjnego, który umożliwia zarządzanie harmonogramem lekarzy, obsługę rezerwacji, wysyłanie przypomnień SMS oraz przeglądanie raportów i statystyk.
+
+Szczególny nacisk położono na prostotę obsługi oraz dostępność interfejsu dla osób starszych i osób z dysfunkcjami wzroku.
+
+## Główne funkcjonalności
+
+### 1. Panel pacjenta
+
+- Przeglądanie dostępnych specjalizacji i lekarzy.
+- Wyświetlanie wolnych terminów wizyt.
+- Rezerwowanie wizyt lekarskich.
+- Weryfikacja numeru telefonu za pomocą kodu SMS.
+- Przeglądanie własnych rezerwacji.
+- Anulowanie i zmiana terminu wizyty.
+
+### 2. Panel pracownika przychodni
+
+Panel pracownika jest dostępny po uwierzytelnieniu za pomocą kodu SMS.
+
+**Harmonogram lekarzy (WF-10):**
+- Przeglądanie harmonogramu wybranego lekarza.
+- Tworzenie nowych terminów wizyt.
+- Blokowanie i odblokowywanie terminów.
+- Usuwanie terminów, które nie posiadają historii rezerwacji.
+
+**Obsługa rezerwacji (WF-11):**
+- Przeglądanie rezerwacji pacjentów.
+- Filtrowanie wizyt.
+- Rezerwowanie terminów przez pracownika, np. podczas rozmowy telefonicznej.
+- Anulowanie rezerwacji.
+- Przenoszenie wizyt na inne terminy.
+- Oznaczanie wizyt jako odbytych lub nieodbytych.
+
+**Przypomnienia SMS (WF-12):**
+- Automatyczne przypomnienia o wizytach.
+- Wysyłanie przypomnień 24 godziny przed wizytą.
+- Sprawdzanie terminów przypomnień co 15 minut.
+- Możliwość ręcznego uruchomienia wysyłki przypomnień przez pracownika.
+
+**Moduł raportowania (WF-13):**
+- Wyświetlanie statystyk rezerwacji.
+- Filtrowanie danych według zakresu dat.
+- Prezentowanie liczby wszystkich rezerwacji.
+- Podział rezerwacji według statusów: aktywne, zakończone, anulowane i nieobecności.
+- Zestawienie statystyk dla poszczególnych lekarzy.
+- Wizualizacja danych za pomocą wykresów.
+- Eksport danych do pliku CSV.
+
+## Technologie
+
+| Obszar | Technologie |
+|---|---|
+| Frontend | TypeScript, React, Vite |
+| Wykresy | Chart.js, react-chartjs-2 |
+| Backend | TypeScript, Node.js, Express |
+| Baza danych | MySQL 8.4 |
+| Sterownik bazy danych | mysql2 |
+| Konteneryzacja | Docker, Docker Compose |
+| Komunikacja | REST API |
+| Uwierzytelnianie | JWT, weryfikacja SMS |
+| Narzędzia | Git, GitHub, npm |
 
 ## Struktura projektu
 
@@ -11,60 +81,71 @@ projekt-systemu-przychodnia/
 │
 ├── backend/
 │   ├── src/
-│   │   ├── controllers/          # Obsługa żądań HTTP
+│   │   ├── controllers/
 │   │   │   ├── auth.controller.ts
 │   │   │   ├── doctor.controller.ts
 │   │   │   ├── phoneVerification.controller.ts
 │   │   │   ├── reservation.controller.ts
-│   │   │   └── term.controller.ts
+│   │   │   ├── term.controller.ts
+│   │   │   └── report.controller.ts
 │   │   │
-│   │   ├── middleware/           # Autoryzacja i ograniczanie żądań
+│   │   ├── middleware/
 │   │   │   ├── auth.middleware.ts
 │   │   │   └── rateLimit.middleware.ts
 │   │   │
-│   │   ├── routes/               # Endpointy API
+│   │   ├── routes/
 │   │   │   ├── auth.routes.ts
 │   │   │   ├── doctor.routes.ts
 │   │   │   ├── phoneVerification.routes.ts
 │   │   │   ├── reservation.routes.ts
-│   │   │   └── term.routes.ts
+│   │   │   ├── term.routes.ts
+│   │   │   └── report.routes.ts
 │   │   │
-│   │   ├── services/             # Logika biznesowa
+│   │   ├── services/
 │   │   │   ├── auth.service.ts
 │   │   │   ├── phoneVerification.service.ts
 │   │   │   ├── reservation.service.ts
 │   │   │   └── sms.service.ts
 │   │   │
-│   │   ├── types/                # Dodatkowe typy TypeScript
+│   │   ├── types/
 │   │   │   └── express.d.ts
 │   │   │
-│   │   ├── db.ts                 # Połączenie z bazą danych
-│   │   ├── index.ts              # Główny plik backendu
-│   │   └── models.ts             # Modele danych
+│   │   ├── app.ts
+│   │   ├── db.ts
+│   │   ├── index.ts
+│   │   └── models.ts
 │   │
-│   ├── .env.example              # Przykładowa konfiguracja
+│   ├── .env.example
 │   ├── package.json
 │   ├── package-lock.json
 │   └── tsconfig.json
 │
 ├── frontend/
-│   ├── public/                   # Pliki statyczne
+│   ├── public/
 │   │
 │   ├── src/
-│   │   ├── components/           # Komponenty interfejsu
+│   │   ├── components/
 │   │   │   ├── AccessibilityBar.tsx
 │   │   │   └── Stepper.tsx
 │   │   │
-│   │   ├── screens/              # Etapy rezerwacji wizyty
+│   │   ├── screens/
 │   │   │   ├── StepConfirm.tsx
 │   │   │   ├── StepPatient.tsx
 │   │   │   ├── StepSpecialization.tsx
 │   │   │   └── StepTerm.tsx
 │   │   │
-│   │   ├── App.tsx               # Główny komponent aplikacji
-│   │   ├── api.ts                # Komunikacja z backendem
-│   │   ├── index.css              # Style aplikacji
-│   │   └── main.tsx               # Punkt wejścia frontendu
+│   │   ├── staff/
+│   │   │   ├── StaffApp.tsx
+│   │   │   ├── StaffLogin.tsx
+│   │   │   ├── ScheduleTab.tsx
+│   │   │   ├── ReservationsTab.tsx
+│   │   │   └── ReportsTab.tsx
+│   │   │
+│   │   ├── App.tsx
+│   │   ├── api.ts
+│   │   ├── staffApi.ts
+│   │   ├── index.css
+│   │   └── main.tsx
 │   │
 │   ├── index.html
 │   ├── package.json
@@ -74,124 +155,105 @@ projekt-systemu-przychodnia/
 │   ├── tsconfig.app.json
 │   └── tsconfig.node.json
 │
-├── db/                            # Skrypty SQL
-│   ├── 01_schema.sql              # Struktura bazy danych
-│   ├── 02_seed.sql                # Dane testowe
-│   ├── 03_phone_verification.sql  # Tabela weryfikacji telefonu
+├── db/
+│   ├── 01_schema.sql
+│   ├── 02_seed.sql
+│   ├── 03_phone_verification.sql
 │   ├── 04_phone_verification_status.sql
-│   └── 05_phone_verification_purpose.sql
+│   ├── 05_phone_verification_purpose.sql
+│   └── 06_reservation_reminder.sql
 │
-├── docker-compose.yml              # Konfiguracja Docker
+├── docker-compose.yml
 ├── .gitignore
 └── README.md
 ```
-
-## Opis projektu
-
-Projekt zakłada stworzenie aplikacji internetowej umożliwiającej pacjentom samodzielne wyszukiwanie i rezerwowanie terminów wizyt lekarskich.
-
-System jest przeznaczony dla pacjentów oraz pracowników przychodni. Pacjenci będą mogli przeglądać dostępnych lekarzy, wybierać specjalizacje i wolne terminy oraz dokonywać rezerwacji. Pracownicy przychodni będą mogli przeglądać rezerwacje i zarządzać harmonogramem wizyt.
-
-Szczególny nacisk położono na prostotę obsługi oraz dostępność interfejsu dla osób starszych i osób z dysfunkcjami wzroku.
-
-## Technologie
-
-- **Frontend:** TypeScript, React, Vite, Chart.js
-- **Backend:** TypeScript, Node.js, Express
-- **Baza danych:** MySQL 8.4
-- **Sterownik bazy danych:** mysql2
-- **Konteneryzacja:** Docker, Docker Compose
-- **Narzędzia:** Git, GitHub, npm
 
 ## Wymagania
 
 Do uruchomienia projektu wymagane są:
 
-- Node.js (wersja LTS)
-- npm
-- Docker Desktop
-- Git
+- Node.js (wersja LTS).
+- npm.
+- Docker Desktop.
+- Git.
 
-## Instalacja
+## Instalacja i konfiguracja
 
 ### 1. Pobranie projektu
 
-Sklonuj repozytorium:
-
 ```bash
 git clone https://github.com/Youlik27/projekt-systemu-przychodnia.git
-```
-
-Przejdź do katalogu projektu:
-
-```bash
 cd projekt-systemu-przychodnia
 ```
 
-### 2. Instalacja i konfiguracja bazy danych
+### 2. Uruchomienie bazy danych
 
-Uruchom Docker Desktop, a następnie wykonaj:
+Uruchom Docker Desktop, a następnie w głównym katalogu projektu wykonaj:
 
 ```bash
 docker compose up -d
 ```
 
-Baza danych MySQL zostanie uruchomiona na porcie `3307`. Nazwa bazy danych: `przychodnia`.
+Baza danych MySQL zostanie uruchomiona na porcie `3307`.
 
-Przy pierwszym uruchomieniu Docker automatycznie wykona skrypty SQL znajdujące się w katalogu `db/`:
+Nazwa bazy danych: `przychodnia`.
 
-- [`db/01_schema.sql`](https://github.com/Youlik27/projekt-systemu-przychodnia/blob/main/db/01_schema.sql) – tworzy strukturę tabel: `User`, `Doctor`, `Terms`, `Reservation`.
-- [`db/02_seed.sql`](https://github.com/Youlik27/projekt-systemu-przychodnia/blob/main/db/02_seed.sql) – wprowadza przykładowe dane testowe.
+Przy pierwszym uruchomieniu Docker wykonuje skrypty inicjalizacyjne znajdujące się w katalogu `db/`, jeśli baza danych jest pusta.
+
+Główne skrypty:
+
+- `01_schema.sql` – tworzy strukturę tabel.
+- `02_seed.sql` – wprowadza przykładowe dane testowe.
+- `03_phone_verification.sql` – tworzy strukturę weryfikacji telefonu.
+- `04_phone_verification_status.sql` – aktualizuje statusy weryfikacji.
+- `05_phone_verification_purpose.sql` – rozszerza obsługę celu weryfikacji.
+- `06_reservation_reminder.sql` – tworzy tabelę przypomnień o rezerwacjach.
+
+**Uwaga:** Jeżeli baza danych została już wcześniej utworzona, nowe skrypty SQL nie wykonają się automatycznie. W takim przypadku należy uruchomić odpowiedni skrypt ręcznie, np.:
+
+```powershell
+Get-Content .\db\06_reservation_reminder.sql | docker exec -i przychodnia-db mysql -uroot -proot przychodnia
+```
+
+Nie należy usuwać wolumenu Dockera tylko po to, aby zastosować nowy skrypt SQL.
 
 ### 3. Instalacja frontendu
 
-Przejdź do katalogu frontend:
-
 ```bash
 cd frontend
-```
-
-Zainstaluj zależności:
-
-```bash
 npm install
 ```
 
 ### 4. Instalacja backendu
 
-Przejdź do katalogu backend:
-
 ```bash
 cd ../backend
-```
-
-Zainstaluj zależności:
-
-```bash
 npm install
 ```
 
-Utwórz plik `.env` na podstawie pliku przykładowego:
+Utwórz plik `.env` na podstawie `.env.example`:
 
 ```bash
 cp .env.example .env
 ```
 
-W razie potrzeby uzupełnij dane konfiguracyjne w pliku `.env`.
+W systemie Windows można również skopiować plik ręcznie.
 
-## Uruchomienie
+Uzupełnij wymagane dane konfiguracyjne zgodnie z konfiguracją backendu. Nie należy udostępniać pliku `.env` ani umieszczać go w repozytorium Git.
 
-### 1. Uruchomienie bazy danych
+## Uruchomienie aplikacji
 
-W głównym katalogu projektu wykonaj:
+### 1. Baza danych
+
+W głównym katalogu projektu:
 
 ```bash
 docker compose up -d
 ```
 
-### 2. Uruchomienie backendu
+### 2. Backend
 
-W terminalu:
+W pierwszym terminalu:
 
 ```bash
 cd backend
@@ -200,13 +262,13 @@ npm run dev
 
 Backend będzie dostępny pod adresem:
 
-[http://localhost:3000](http://localhost:3000)
+http://localhost:3000
 
 Endpoint kontrolny API:
 
-[http://localhost:3000/api/health](http://localhost:3000/api/health)
+http://localhost:3000/api/health
 
-### 3. Uruchomienie frontendu
+### 3. Frontend
 
 W drugim terminalu:
 
@@ -217,34 +279,41 @@ npm run dev
 
 Frontend będzie dostępny pod adresem:
 
-[http://localhost:5173](http://localhost:5173)
+http://localhost:5173
 
-## Dodatkowe informacje
+## Baza danych
 
-### Podgląd bazy danych
+Baza danych wykorzystuje MySQL 8.4.
 
-Aby połączyć się z bazą danych z poziomu konsoli:
+Najważniejsze tabele:
+
+- `User` – dane użytkowników i pacjentów.
+- `Doctor` – dane lekarzy.
+- `Terms` – dostępne terminy wizyt.
+- `Reservation` – rezerwacje pacjentów.
+- `ReservationReminder` – informacje dotyczące przypomnień o wizytach.
+
+Dodatkowe tabele obsługują proces weryfikacji numerów telefonu.
+
+### Połączenie z bazą danych przez konsolę
 
 ```bash
 docker exec -it przychodnia-db mysql -uroot -proot przychodnia
 ```
 
-### Odtworzenie bazy danych
+### Połączenie przez MySQL Workbench
 
-Pliki SQL z katalogu `db/` są wykonywane automatycznie tylko przy pierwszym uruchomieniu, gdy baza danych jest pusta.
+| Parametr | Wartość |
+|---|---|
+| Hostname | 127.0.0.1 |
+| Port | 3307 |
+| Username | root |
+| Schema | przychodnia |
 
-W przypadku zmian w strukturze bazy danych można ją odtworzyć za pomocą:
+Hasło należy ustawić zgodnie z konfiguracją Docker Compose.
 
-```bash
-docker compose down -v
-docker compose up -d
-```
+## Testowanie i analiza wyników
 
-**Uwaga:** polecenie `docker compose down -v` usuwa bazę danych wraz z zapisanymi danymi.
+Testowanie systemu obejmuje weryfikację najważniejszych funkcjonalności aplikacji, w szczególności:
 
-## Autorzy
-
-- Yelisiei Palamarchuk – moduł raportowania, testy, analiza wyników
-- Vladyslav Mihulov – baza danych, model danych, integracja
-- Maksym Nidzelskyi – backend, API, autoryzacja
-- Maksym Litosh – frontend, UI/UX
+- Uwierzyteln
