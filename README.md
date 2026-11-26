@@ -316,4 +316,26 @@ Hasło należy ustawić zgodnie z konfiguracją Docker Compose.
 
 Testowanie systemu obejmuje weryfikację najważniejszych funkcjonalności aplikacji, w szczególności:
 
-- Uwierzyteln
+- Uwierzytelniania pacjentów i pracowników.
+- Weryfikacji numeru telefonu.
+- Rezerwowania i anulowania wizyt.
+- Zarządzania harmonogramem lekarzy.
+- Przenoszenia wizyt na inne terminy.
+- Obsługi statusów wizyt.
+- Wysyłania przypomnień SMS.
+- Generowania raportów i filtrowania statystyk.
+
+Wyniki testów powinny zostać udokumentowane w postaci tabeli zawierającej scenariusz testowy, oczekiwany rezultat, uzyskany rezultat oraz status testu.
+
+Analiza wyników pozwala ocenić poprawność działania systemu, wykryte błędy i obszary wymagające dalszych usprawnień.
+
+## Autorzy
+
+- **Yelisiei Palamarchuk** – moduł raportowania, testy, analiza wyników.
+- **Vladyslav Mihulov** – baza danych, model danych, integracja.
+- **Maksym Nidzelskyi** – backend, API, autoryzacja.
+- **Maksym Litosh** – frontend, UI/UX.
+
+## Repozytorium
+
+[GitHub – projekt-systemu-przychodnia](https://github.com/Youlik27/projekt-systemu-przychodnia)
