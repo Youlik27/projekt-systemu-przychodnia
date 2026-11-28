@@ -260,7 +260,16 @@ export const getStaffReservations = async (req: Request, res: Response): Promise
         return badRequest(res, "Wyszukiwanie pacjenta: od 2 do 50 znaków (telefon lub nazwisko).");
       filters.patient = patient.trim();
     }
-
+    if (
+      filters.from &&
+      filters.to &&
+      daysBetween(filters.from, filters.to) < 0
+    ) {
+      return badRequest(
+        res,
+        "Data początkowa nie może być późniejsza niż końcowa."
+      );
+    }
     const reservations = await listReservations(filters);
 
     res.status(200).json({ success: true, reservations });
